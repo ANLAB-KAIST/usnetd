@@ -1,0 +1,1 @@
+PATH=/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/bin BG_THREAD_PIN_CPU_ID=2 RUST_LOG=info USNET_SOCKETS='{"UsnetConfig":{"Interface":{"interface":{"Interface":"enp1s0f0"},"ipc":"NetmapPipe","mac":"Passthru","ipv4":"Passthru"}}}' taskset -a -c 2 ./smolbench -b 500000 client --api --nocopy -p 1 --amount 5000000  169.254.214.162

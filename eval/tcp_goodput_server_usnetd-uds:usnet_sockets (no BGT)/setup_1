@@ -1,0 +1,3 @@
+sudo ip link delete enp4s0f0pass || true
+sudo killall usnetd smolbench smolbenchsingle || true
+sudo systemd-run -G --setenv=RUST_LOG=info taskset -c 6 /home/support/usnetd enp4s0f0config

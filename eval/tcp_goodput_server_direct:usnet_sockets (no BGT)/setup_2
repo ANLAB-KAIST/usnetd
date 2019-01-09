@@ -1,0 +1,3 @@
+sudo ip link delete enp6s0f0pass || true
+sudo killall usnetd smolbench smolbenchsingle || true
+sudo PATH=/usr/bin:/usr/sbin:/sbin:/bin RUST_LOG=info USNET_SOCKETS='{"NetmapConfig":{"Interface":{"interface":{"Interface":{"netmap_name":"netmap:enp6s0f0","parent":"enp6s0f0"}},"mac":"Passthru","ipv4":"Passthru"}}}' taskset -a -c 2 ./smolbenchsingle -b 500000 smoltcp --api --nocopy

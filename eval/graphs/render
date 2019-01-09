@@ -1,0 +1,177 @@
+#!/usr/bin/env python3.6
+import sh
+from altair import *
+
+def save(chart, fpath):
+  chart.save(fpath, format="svg")
+  with open(fpath) as f:
+    s = f.read()
+  with open(fpath, "w") as f:
+    s = s.replace("sans-serif", "TeX Gyre Pagella").replace("font-size: 10px", "font-size: 16px").replace("font-size: 11px", "font-size: 16px")
+    f.write(s)
+    # DejaVu Sans
+    # TeX Gyre Pagella
+  sh.inkscape("--without-gui", "-D", "--export-pdf={}".format(fpath.replace(".svg", ".pdf")), fpath)
+
+
+# httpd:
+httpd_desktop_linux = pd.read_csv('../httpd_desktop:linux/last')
+httpd_desktop_usnet = pd.read_csv('../httpd_desktop:usnet/last')
+httpd_server_linux = pd.read_csv('../httpd_server:linux/last')
+httpd_server_usnet = pd.read_csv('../httpd_server:usnet/last')
+#linux = pd.concat([httpd_desktop_linux, httpd_server_linux])
+#usnet = pd.concat([httpd_desktop_usnet, httpd_server_usnet])
+serv = pd.concat([httpd_server_linux,httpd_server_usnet])
+desk = pd.concat([httpd_desktop_linux,httpd_desktop_usnet])
+c = Chart(serv).mark_bar().encode(color=Color('Network Stack'),x=X("Network Stack:N", axis=Axis(labels=False, title="2.6 GHz"), scale=Scale(paddingOuter=0.7)), y=Y("mean(Reqs):Q", scale=Scale(domain=[0,35000]), axis=Axis(grid=False, title="Req/s")))
+m = Chart(serv).mark_rule().encode(x=X("Network Stack:N", axis=None, scale=Scale(paddingOuter=0.7)), y="min(Reqs):Q", y2="max(Reqs):Q")
+c = c + m
+
+p = Chart(desk).mark_bar().encode(color=Color('Network Stack'), x=X("Network Stack:N", axis=Axis(labels=False, title="3.9 GHz"), scale=Scale(paddingOuter=0.7)), y=Y("mean(Reqs):Q", scale=Scale(domain=[0,35000]), axis=Axis(labels=False, grid=False, title=None)))
+m = Chart(desk).mark_rule().encode(x=X("Network Stack:N", axis=None, scale=Scale(paddingOuter=0.7)), y="min(Reqs):Q", y2="max(Reqs):Q")
+p = p + m
+
+c = c | p
+
+c = c.configure_view(strokeWidth=6.0, height=400, width=800)
+save(c, "httpd_req.svg")
+
+#raise Exception("end")
+
+# unix domain socket IPC:
+multi_u = pd.read_csv('../tcp_goodput_server_usnetd-uds:usnet_sockets/last')
+single_u = pd.read_csv('../tcp_goodput_server_usnetd-uds:usnet_sockets (no BGT)/last')
+smoltcp_u = pd.read_csv('../tcp_goodput_server_usnetd-uds:smoltcp/last')
+d = pd.concat([multi_u, single_u, smoltcp_u])
+# direct:
+c = Chart(d).mark_bar().encode(color=Color("Socket API:N"), x=X("Socket API:N", axis=Axis(labels=False, title="usnetd (IPC: Unix Domain Socket) 2.6 GHz"), scale=Scale(paddingOuter=0.7)), y=Y("mean(Speed):Q", scale=Scale(domain=[0,10000]), axis=Axis(grid=False, title="MBit/s")))
+m = Chart(d).mark_rule().encode(x=X("Socket API:N", axis=None, scale=Scale(paddingOuter=0.7)), y="min(Speed):Q", y2="max(Speed):Q")
+c = c + m
+c = c.configure_view(strokeWidth=6.0, height=400, width=800)
+save(c, "tcp_goodput_usnetd-uds.svg")
+
+
+# macvtap:
+multi_mv = pd.read_csv('../tcp_goodput_server_macvtap:usnet_sockets/last')
+single_mv = pd.read_csv('../tcp_goodput_server_macvtap:usnet_sockets (no BGT)/last')
+smoltcp_mv = pd.read_csv('../tcp_goodput_server_macvtap:smoltcp/last')
+d = pd.concat([multi_mv, single_mv, smoltcp_mv])
+# direct:
+c = Chart(d).mark_bar().encode(color=Color("Socket API:N"), x=X("Socket API:N", axis=Axis(labels=False, title="macvtap 2.6 GHz"), scale=Scale(paddingOuter=0.7)), y=Y("mean(Speed):Q", scale=Scale(domain=[0,10000]), axis=Axis(grid=False, title="MBit/s")))
+m = Chart(d).mark_rule().encode(x=X("Socket API:N", axis=None, scale=Scale(paddingOuter=0.7)), y="min(Speed):Q", y2="max(Speed):Q")
+c = c + m
+c = c.configure_view(strokeWidth=6.0, height=400, width=800)
+save(c, "tcp_goodput_macvtap.svg")
+
+
+switch_desktop_min = pd.read_csv('../switch_pps_desktop:64/last')
+direct_desktop_min = pd.read_csv('../direct_pps_desktop:64/last')
+switch_server_min = pd.read_csv('../switch_pps_server:64/last')
+direct_server_min = pd.read_csv('../direct_pps_server:64/last')
+switch_server_max = pd.read_csv('../switch_pps_server:1500/last')
+direct_server_max = pd.read_csv('../direct_pps_server:1500/last')
+mpps_serv = pd.concat([direct_server_min, switch_server_min])
+mpps_desk = pd.concat([direct_desktop_min, switch_desktop_min])
+mpps_switch = pd.concat([switch_desktop_min, switch_server_min])
+mpps_direct = pd.concat([direct_desktop_min, direct_server_min])
+# switch mpps:
+c = Chart(mpps_switch).mark_bar().encode(color=Color('Mode'),x=X("GHz:N", axis=Axis(title="GHz"), scale=Scale(paddingOuter=0.7)), y=Y("mean(Mpps):Q", scale=Scale(domain=[0,14]), axis=Axis(grid=False, title="Mpps")))
+m = Chart(mpps_switch).mark_rule().encode(x=X("GHz:N", axis=None, scale=Scale(paddingOuter=0.7)), y="min(Mpps):Q", y2="max(Mpps):Q")
+c = c + m
+
+p = Chart(mpps_direct).mark_bar().encode(color=Color('Mode'), x=X("GHz:N", axis=None, scale=Scale(paddingOuter=0.7)), y="mean(Mpps):Q")
+
+c = p + c
+
+save(c, "switch_mpps_stacked.svg")
+
+c = Chart(mpps_serv).mark_bar().encode(color=Color('Mode'), x=X("Mode:N", axis=Axis(labels=False, title="2.6 GHz"), scale=Scale(paddingOuter=0.7)), y=Y("mean(Mpps):Q", scale=Scale(domain=[0,14]), axis=Axis(grid=False, title="Mpps")))
+m = Chart(mpps_serv).mark_rule().encode(x=X("Mode:N", axis=None, scale=Scale(paddingOuter=0.7)), y="min(Mpps):Q", y2="max(Mpps):Q")
+c = c + m
+
+p = Chart(mpps_desk).mark_bar().encode(color=Color('Mode'), x=X("Mode:N", axis=Axis(labels=False, title="3.9 GHz"), scale=Scale(paddingOuter=0.7)), y=Y("mean(Mpps):Q", scale=Scale(domain=[0,14]), axis=Axis(grid=False, title=None, labels=False)))
+m = Chart(mpps_desk).mark_rule().encode(x=X("Mode:N", axis=None, scale=Scale(paddingOuter=0.7)), y="min(Mpps):Q", y2="max(Mpps):Q")
+p = p + m
+c = c | p
+c = c.configure_view(strokeWidth=6.0, height=400, width=800)
+save(c, "switch_mpps.svg")
+
+# switch troughput:
+throughput_switch = pd.concat([
+  switch_server_min, switch_server_max,
+  pd.read_csv('../switch_pps_server:96/last'),
+  pd.read_csv('../switch_pps_server:128/last'),
+  pd.read_csv('../switch_pps_server:500/last'),
+  pd.read_csv('../switch_pps_server:1000/last')
+])
+throughput_direct = pd.concat([
+  direct_server_min, direct_server_max,
+  pd.read_csv('../direct_pps_server:96/last'),
+  pd.read_csv('../direct_pps_server:128/last'),
+  pd.read_csv('../direct_pps_server:500/last'),
+  pd.read_csv('../direct_pps_server:1000/last')
+])
+throughput_switch = pd.concat([throughput_switch, throughput_direct])
+c = Chart(throughput_switch).mark_bar().encode(color=Color("Mode"), column='Packet Size:N', x=X("Mode", axis=Axis(labels=False, title=None), scale=Scale(paddingOuter=0.7)), y=Y("mean(Throughput):Q", scale=Scale(domain=[0,10000]), axis=Axis(grid=False, title="MBit/s")))
+#m = Chart(throughput_switch).mark_rule().encode(x=X("Packet Size:N", column='Packet Size:N', axis=None, scale=Scale(paddingOuter=0.7)), y="min(Throughput):Q", y2="max(Throughput):Q")
+#c = c + m
+
+#p = Chart(throughput_direct).mark_bar().encode(color=Color("Mode"), x=X("Packet Size:N", axis=Axis(title="Packet Size"), scale=Scale(paddingOuter=0.7)), y=Y("mean(Throughput):Q", scale=Scale(domain=[0,10000]), axis=Axis(grid=False, title="MBit/s")))
+
+#c = c | p
+
+c = c.configure_view(strokeWidth=6.0, height=400, width=800)
+save(c, "switch_throughput.svg")
+
+#
+server = pd.read_csv('../tcp_goodput_server_usnetd:usnet_sockets/last')
+# usnetd:
+c = Chart(server).mark_bar().encode(color=Color("Socket API:N"), x=X("Socket API:N", axis=Axis(labels=False, title="usnetd 2.6 GHz"), scale=Scale(paddingOuter=0.7)), y=Y("mean(Speed):Q", scale=Scale(domain=[0,10000]), axis=Axis(grid=False, title="MBit/s")))
+m = Chart(server).mark_rule().encode(x=X("Socket API:N", axis=None, scale=Scale(paddingOuter=0.7)), y="min(Speed):Q", y2="max(Speed):Q")
+c = c + m
+
+desktop = pd.read_csv('../tcp_goodput_desktop_usnetd:usnet_sockets/last') # @TODO: rerun, add more?
+c2 = Chart(desktop).mark_bar().encode(color=Color("Socket API:N"), x=X("Socket API:N", axis=Axis(labels=False, title="3.9 GHz"), scale=Scale(paddingOuter=0.7)), y=Y("mean(Speed):Q", scale=Scale(domain=[0,10000]), axis=Axis(labels=False, grid=False, title=None)))
+m2 = Chart(desktop).mark_rule().encode(x=X("Socket API:N", axis=None, scale=Scale(paddingOuter=0.7)), y="min(Speed):Q", y2="max(Speed):Q")
+c2 = c2 + m2
+
+c = c | c2
+c = c.configure_view(strokeWidth=6.0, height=400, width=800)
+save(c, "tcp_goodput_usnetd_both.svg")
+
+
+
+multi = pd.read_csv('../tcp_goodput_server_usnetd:usnet_sockets/last')
+single = pd.read_csv('../tcp_goodput_server_usnetd:usnet_sockets (no BGT)/last')
+smoltcp = pd.read_csv('../tcp_goodput_server_usnetd:smoltcp/last')
+d = pd.concat([multi, single, smoltcp])
+# usnetd:
+c = Chart(d).mark_bar().encode(color=Color("Socket API:N"), x=X("Socket API:N", axis=Axis(labels=False, title="usnetd 2.6 GHz"), scale=Scale(paddingOuter=0.7)), y=Y("mean(Speed):Q", scale=Scale(domain=[0,10000]), axis=Axis(grid=False, title="MBit/s")))
+m = Chart(d).mark_rule().encode(x=X("Socket API:N", axis=None, scale=Scale(paddingOuter=0.7)), y="min(Speed):Q", y2="max(Speed):Q")
+c = c + m
+
+#desktop = pd.read_csv('../tcp_goodput_desktop_usnetd:usnet_sockets/last') # @TODO: rerun, add more?
+#c2 = Chart(desktop).mark_bar().encode(color=Color("Socket API:N"), x=X("Socket API:N", axis=Axis(labels=False, title="usnetd 3.9 GHz"), scale=Scale(paddingOuter=0.7)), y=Y("mean(Speed):Q", scale=Scale(domain=[0,10000]), axis=Axis(grid=False, title=None)))
+#m2 = Chart(desktop).mark_rule().encode(x=X("Socket API:N", axis=None, scale=Scale(paddingOuter=0.7)), y="min(Speed):Q", y2="max(Speed):Q")
+#c2 = c2 + m2
+
+#c = c | c2
+#c = c.configure_view(strokeWidth=6.0, height=400, width=800)
+#save(c, "tcp_goodput_usnetd_server.svg")
+o = c
+
+multi_direct = pd.read_csv('../tcp_goodput_server_direct:usnet_sockets/last')
+single_direct = pd.read_csv('../tcp_goodput_server_direct:usnet_sockets (no BGT)/last')
+smoltcp_direct = pd.read_csv('../tcp_goodput_server_direct:smoltcp/last')
+d = pd.concat([multi_direct, single_direct, smoltcp_direct])
+# direct:
+c = Chart(d).mark_bar().encode(color=Color("Socket API:N"), x=X("Socket API:N", axis=Axis(labels=False, title="netmap 2.6 GHz"), scale=Scale(paddingOuter=0.7)), y=Y("mean(Speed):Q", scale=Scale(domain=[0,10000]), axis=Axis(grid=False, title=None, labels=False)))
+# title="MBit/s", labels=true
+m = Chart(d).mark_rule().encode(x=X("Socket API:N", axis=None, scale=Scale(paddingOuter=0.7)), y="min(Speed):Q", y2="max(Speed):Q")
+c = c + m
+#c = c.configure_view(strokeWidth=6.0, height=400, width=800)
+#save(c, "tcp_goodput_direct.svg")
+
+c = o | c
+c = c.configure_view(strokeWidth=6.0, height=400, width=800)
+save(c, "tcp_goodput_usnetd_and_netmap.svg")

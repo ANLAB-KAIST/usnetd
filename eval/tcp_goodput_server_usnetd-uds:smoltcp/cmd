@@ -1,0 +1,1 @@
+PATH=/usr/bin:/usr/sbin:/sbin:/bin USNET_SOCKETS_WAIT=true RUST_LOG=info USNET_SOCKETS='{"UsnetConfig":{"Interface":{"interface":{"Interface":"enp4s0f0"},"ipc":"UnixDomainSocket","mac":"Passthru","ipv4":"Passthru"}}}' taskset -a -c 2 ./smolbench -b 500000 client -x 500000 --smoltcp-no-api --nocopy -p 1 --amount 5000000 169.254.137.191

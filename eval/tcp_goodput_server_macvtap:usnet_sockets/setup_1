@@ -1,0 +1,2 @@
+sudo ip link delete enp4s0f0pass || true
+sudo killall usnetd smolbench smolbenchsingle || true

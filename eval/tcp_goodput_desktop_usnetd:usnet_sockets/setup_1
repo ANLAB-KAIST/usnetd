@@ -1,0 +1,2 @@
+sudo killall usnetd smolbench smolbenchsingle || true
+sudo systemd-run -G --setenv=RUST_LOG=info taskset -c 0 /home/user/usnetd enp1s0f0config

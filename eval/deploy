@@ -1,0 +1,18 @@
+#!/bin/bash
+set -euxo pipefail
+cd smolbench
+cargo build --release --features single --no-default-features
+scp target/release/smolbench  support@10.0.3.1:smolbenchsingle
+scp target/release/smolbench  support@10.0.3.2:smolbenchsingle
+cargo build --release --features host --no-default-features
+scp target/release/smolbench  support@10.0.3.2:smolbenchhost
+cargo build --release
+scp target/release/smolbench enp1s0f0config  enp4s0f0config  enp6s0f0config support@10.0.3.1:
+scp target/release/smolbench enp1s0f0config  enp4s0f0config  enp6s0f0config support@10.0.3.2:
+cargo build
+scp target/debug/smolbench  support@10.0.3.1:smolbenchdebug
+scp target/debug/smolbench  support@10.0.3.2:smolbenchdebug
+cd ../..
+cargo build --release
+scp target/release/usnetd support@10.0.3.1:
+scp target/release/usnetd support@10.0.3.2:

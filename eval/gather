@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+# usage: ./gather [-i sshid] [FOLDER] …
+# ./gather -i ~/.ssh/id_anlab.pub tcp_goodput_multi
+
+import sh, time, getpass, sys, datetime
+import pandas as pd
+
+sudopw = getpass.getpass()
+def read(p):
+  with open(p) as f:
+    return list(f.read().strip().split('\n'))
+
+def run(cmdl, ssh=[], root=False, bg=False):
+  sudo = ["sudo", "-S"] if root else []
+  cmdl = ssh + sudo + cmdl
+  cmd = sh.Command(cmdl[0])
+  cmd = cmd.bake(cmdl[1:])
+  if root:
+    cmd = cmd.bake(_in=sudopw+'\n')
+  if bg:
+    cmd = cmd.bake(_bg=True)
+  return cmd()
+
+def exec_lines(i, on):
+  last = None
+  for c in i:
+    c = list(c.split(" "))
+    if last:
+     last.wait()
+    root = False
+    if c[0] == "sudo":
+      c.pop(0)
+      root = True
+    last = run(c, ssh + on, root=root, bg=True)
+    time.sleep(7) #
+  return last
+
+def start_experiment(e):
+  print("start", e)
+  server1 = read(e+"/server_1")[0].split(' ')
+  server2 = read(e+"/server_2")[0].split(' ')
+  a = read(e+"/cmd")
+  setup1 = read(e+"/setup_1")
+  setup2 = read(e+"/setup_2")
+  v = exec_lines(setup2, server2)
+  exec_lines(setup1, server1).wait()
+  d = []
+  stamp = datetime.datetime.now().isoformat()
+  for _ in range(0,3):
+    print("run iter")
+    out = exec_lines(a, server1).wait()
+    mbit = float(str(out.stdout, "utf8").split("MBit/s")[1].split(",")[0])
+    l = (e.split(":")[-1], mbit)
+    print(l, "MBit/s")
+    d.append(l)
+    data = pd.DataFrame(d, columns=["Socket API", "Speed"])
+    data.to_csv(e+"/"+stamp)
+    data.to_csv(e+"/last")
+  v.kill()
+  print("done")
+
+args = list(sys.argv[1:])
+ssh = ["ssh"]
+if args[0] == '-i':
+  ssh += [args.pop(0)]
+  ssh += [args.pop(0)]
+for e in args:
+  if e.endswith('/'):
+    e = e[:-1]
+  start_experiment(e)

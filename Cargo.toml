@@ -1,0 +1,31 @@
+[package]
+name = "usnetd"
+version = "0.1.0"
+authors = ["Kai Lüke <kailueke@riseup.net>"]
+license = "MIT"
+
+[lib]
+name = "libusnetd"
+path = "src/lib.rs"
+
+[[bin]]
+name = "usnetd"
+path = "src/main.rs"
+
+[dependencies]
+smoltcp = { git = "https://github.com/m-labs/smoltcp" }
+byteorder = { version = "1.0", default-features = false }
+usnet_devices = { git = "https://github.com/ANLAB-KAIST/usnet_devices" }
+log = { version = "0.4.0", features = ["release_max_level_debug"] }
+env_logger = "0.5.10"
+fnv = "1.0.3"
+nix = "0.11.0"
+serde = "1.0.53"
+serde_derive = "1.0.53"
+serde_json = "1.0.17"
+dotenv = { git = "https://github.com/apiraino/rust-dotenv", rev = "5cfd95025b8e38de76937cfca525562115396ae2" }
+clap = "2.31.2"
+
+[features]
+default = []
+pcap = []

@@ -1,0 +1,4 @@
+sudo ip link delete enp6s0f0pass || true
+sudo killall usnetd smolbench smolbenchsingle || true
+sudo systemd-run -G --setenv=RUST_LOG=info taskset -c 6 /home/support/usnetd enp6s0f0config
+PATH=/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/bin BG_THREAD_PIN_CPU_ID=2 RUST_LOG=info USNET_SOCKETS='{"UsnetConfig":{"Interface":{"interface":{"Interface":"enp6s0f0"},"ipc":"NetmapPipe","mac":"Passthru","ipv4":"Passthru"}}}' taskset -a -c 2 ./smolbench -b 500000 smoltcp --api --nocopy

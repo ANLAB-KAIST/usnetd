@@ -1,0 +1,1 @@
+sudo PATH=/usr/bin:/usr/sbin:/sbin:/bin RUST_LOG=info BG_THREAD_PIN_CPU_ID=2 USNET_SOCKETS='{"NetmapConfig":{"Interface":{"interface":{"Interface":{"netmap_name":"netmap:enp4s0f0","parent":"enp4s0f0"}},"mac":"Passthru","ipv4":"Passthru"}}}' taskset -a -c 3 ./smolbench -b 500000 client --api --nocopy -p 1 --amount 100000  169.254.137.191

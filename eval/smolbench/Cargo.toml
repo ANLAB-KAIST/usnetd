@@ -1,0 +1,22 @@
+[package]
+name = "smolbench"
+version = "0.1.0"
+authors = ["Kai Lüke <kailueke@riseup.net>"]
+
+[dependencies]
+smoltcp = { git = "https://github.com/m-labs/smoltcp" }
+usnet_sockets = { git = "https://github.com/ANLAB-KAIST/usnet_sockets" }
+clap = "2.31.2"
+env_logger = "0.5.10"
+rand = "0.4.2"
+serde = "1.0.53"
+serde_json = "1.0.17"
+
+[features]
+default = ["multi"]
+
+multi = []
+host = []
+single = []
+
+printout = []

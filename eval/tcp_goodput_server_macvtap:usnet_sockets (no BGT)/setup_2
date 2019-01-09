@@ -1,0 +1,3 @@
+sudo ip link delete enp6s0f0pass || true
+sudo killall usnetd smolbench smolbenchsingle || true
+sudo PATH=/usr/bin:/usr/sbin:/sbin:/bin RUST_LOG=info USNET_SOCKETS='{"MacVtapConfig":{"Create":{"mac":"Passthru","parent":{"Interface":"enp6s0f0"},"ipv4":"Passthru"}}}' taskset -a -c 2 ./smolbenchsingle -b 500000 smoltcp --api --nocopy
