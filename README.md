@@ -13,9 +13,9 @@ The thesis evaluation was done with the tools in the folder `eval/` and shows th
 The current implementation covers the netmap variant, but support for macvtap would be the next easy step to have it working without the netmap kernel module.
 Unsafe code is used for netmap packet transfer and file descriptor handover. Read Chapter 3 of the thesis for a reasoning about the threat model and L2 code as the trusted code base.
 
-Compile it as follows (optionall with the `--features pcap` flag to enable copying of all packets to a PCAP dump file):
+Compile it as follows (optionally with the `--features pcap` flag to enable copying of all packets to a PCAP dump file):
 
-   cargo build --release
+    cargo build --release
 
 To use usnetd, first compile netmap and load the kernel module and the patched drivers, e.g., for ixgbe as follows.
 

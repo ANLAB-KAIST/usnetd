@@ -1,6 +1,6 @@
-The smolbench program has serveral modes, 
+The smolbench program has serveral modes.
 
-Build with cargo build --release and run the resulting binary to see the invokation arguments:
+Build with `cargo build --release` and run the resulting binary to see the invokation arguments:
 
     $ target/release/smolbench -h
 
