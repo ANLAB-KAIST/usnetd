@@ -1,6 +1,6 @@
 # usnetd: Memory-safe L4 Switch for Userspace Network Stacks
 
-This is a prototype implementation of the switch design in the master thesis [“Memory-safe Network Services Through A Userspace Networking Switch”](https://LINK-HERE), for a short version see the defense [presentation](https://LINK-HERE).
+This is a prototype implementation of the switch design in the master thesis [“Memory-safe Network Services Through A Userspace Networking Switch”](https://pothos.github.io/papers/msc_thesis_memory-safe_network_services_userspace_switch.pdf), for a short version see the defense [presentation](https://pothos.github.io/papers/msc_thesis_memory-safe_network_services_userspace_switch_slides.pdf).
 
 The switch runs as system service that shares a NIC for multiple userspace network stacks and the Linux kernel network stack.
 It allows to use the same IP address for the kernel as for userspace network stacks.
@@ -41,10 +41,10 @@ Other variables can be set to configure a static netmap pipe or forwarding of a 
     <INTERFACES>: Names of NIC interfaces which should be claimed, separated by commas
     [ALLOW_GID]: Sets the user group ID which can access the control socket at /run/usnetd.socket
     [DEBUG_PORTS]: Opens ports for the kernel network stack, specified as list of
-                   <INTERFACE>:<<TCP:PORTNUMBER>|<UDP:PORTNUMBER>|<ICMP>>[:<REMOTEIP>] spearated
+                   <INTERFACE>:<<TCP:PORTNUMBER>|<UDP:PORTNUMBER>|<ICMP>>[:<REMOTEIP>] separated
                    by commas, e.g., eth0:TCP:22 (currently takes only the first IP of the kernel)
     [STATIC_PIPES]: Creates static netmap pipes specified as list of
-                    <INTERFACE>:<<TCP:PORTNUMBER>|<UDP:PORTNUMBER>|<ICMP>>[:<REMOTEIP>] spearated
+                    <INTERFACE>:<<TCP:PORTNUMBER>|<UDP:PORTNUMBER>|<ICMP>>[:<REMOTEIP>] separated
                     by commas, starting with a pipe ID of 4094 and counting downwards,
                     i.e., netmap:eth0{4094 (currently, only one port per pipe can be specified in
                     this format and the same IP is used as the IP of the kernel)

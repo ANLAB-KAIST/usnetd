@@ -584,10 +584,10 @@ fn main() {
 <INTERFACES>: Names of NIC interfaces which should be claimed, separated by commas
 [ALLOW_GID]: Sets the user group ID which can access the control socket at ".to_string() + SOCKET_PATH + "
 [DEBUG_PORTS]: Opens ports for the kernel network stack, specified as list of
-               <INTERFACE>:<<TCP:PORTNUMBER>|<UDP:PORTNUMBER>|<ICMP>>[:<REMOTEIP>] spearated
+               <INTERFACE>:<<TCP:PORTNUMBER>|<UDP:PORTNUMBER>|<ICMP>>[:<REMOTEIP>] separated
                by commas, e.g., eth0:TCP:22 (currently takes only the first IP of the kernel)
 [STATIC_PIPES]: Creates static netmap pipes specified as list of
-                <INTERFACE>:<<TCP:PORTNUMBER>|<UDP:PORTNUMBER>|<ICMP>>[:<REMOTEIP>] spearated
+                <INTERFACE>:<<TCP:PORTNUMBER>|<UDP:PORTNUMBER>|<ICMP>>[:<REMOTEIP>] separated
                 by commas, starting with a pipe ID of 4094 and counting downwards,
                 i.e., netmap:eth0{4094 (currently, only one port per pipe can be specified in
                 this format and the same IP is used as the IP of the kernel)
