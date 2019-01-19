@@ -1,6 +1,3 @@
-#![feature(wait_until)]
-#![feature(vec_remove_item)]
-
 extern crate usnet_sockets;
 
 extern crate smoltcp;
