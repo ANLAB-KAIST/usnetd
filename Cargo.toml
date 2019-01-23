@@ -18,7 +18,7 @@ byteorder = { version = "1.0", default-features = false }
 usnet_devices = { git = "https://github.com/ANLAB-KAIST/usnet_devices" }
 log = { version = "0.4.0", features = ["release_max_level_debug"] }
 env_logger = "0.5.10"
-fnv = "1.0.3"
+hashbrown = "0.1"
 nix = "0.11.0"
 serde = "1.0.53"
 serde_derive = "1.0.53"

@@ -27,8 +27,8 @@ use smoltcp::wire::{IpProtocol, Ipv4Address};
 
 use smoltcp::phy::PcapSink;
 
-extern crate fnv;
-use fnv::FnvHashMap;
+extern crate hashbrown;
+use hashbrown::HashMap;
 
 extern crate byteorder;
 
@@ -235,7 +235,7 @@ fn add_listening_match(
     sticky: bool,
     endpoint: Rc<RefCell<EndpointOrControl>>,
     want: Want,
-    match_register: &mut FnvHashMap<Want, (bool, Rc<RefCell<EndpointOrControl>>)>,
+    match_register: &mut HashMap<Want, (bool, Rc<RefCell<EndpointOrControl>>)>,
 ) -> bool {
     if match_register.contains_key(&want) {
         return false;
@@ -257,7 +257,7 @@ fn add_listening_match(
 
 fn add_debug_match_for_kernel(
     want: Want,
-    match_register: &mut FnvHashMap<Want, (bool, Rc<RefCell<EndpointOrControl>>)>,
+    match_register: &mut HashMap<Want, (bool, Rc<RefCell<EndpointOrControl>>)>,
     devices: &Vec<Rc<RefCell<EndpointOrControl>>>,
     interface: &str,
 ) {
@@ -270,7 +270,7 @@ fn add_static_pipe(
     want: Want,
     interface: &str,
     endpoints: &mut Endpoints,
-    match_register: &mut FnvHashMap<Want, (bool, Rc<RefCell<EndpointOrControl>>)>,
+    match_register: &mut HashMap<Want, (bool, Rc<RefCell<EndpointOrControl>>)>,
     devices: &mut Vec<Rc<RefCell<EndpointOrControl>>>,
 ) {
     let anic =
@@ -360,7 +360,7 @@ fn act_on(
     service_socket: &mut UnixDatagram,
     all_devices: &Vec<Rc<RefCell<EndpointOrControl>>>,
     endpoint_index: usize,
-    match_register: &mut FnvHashMap<Want, (bool, Rc<RefCell<EndpointOrControl>>)>,
+    match_register: &mut HashMap<Want, (bool, Rc<RefCell<EndpointOrControl>>)>,
     endpoint_changes: &mut Vec<EntryChange>,
     pipe_monitor: &mut Vec<(u64, Rc<RefCell<EndpointOrControl>>)>,
 ) {
@@ -616,7 +616,7 @@ fn main() {
 
     let pcap_dump = pcap_dump();
 
-    let mut match_register = FnvHashMap::default();
+    let mut match_register = HashMap::default();
     let mut innerl2bridge = vec![];
     let mut pipe_monitor = vec![];
     let mut all_devices = vec![]; // only managed by Endpoints.add() etc

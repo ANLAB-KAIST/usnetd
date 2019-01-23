@@ -8,7 +8,7 @@ use smoltcp::time::Instant;
 use smoltcp::wire::{EthernetAddress, Ipv4Address};
 use smoltcp::Error;
 
-use fnv::FnvHashMap;
+use hashbrown::HashMap;
 
 use std::path::PathBuf;
 
@@ -30,7 +30,7 @@ impl Endpoint {
         &mut self,
         rx_nic: impl RxToken,
         innerl2bridge: &mut Vec<EthernetAddress>,
-        match_register: &mut FnvHashMap<Want, (bool, Rc<RefCell<EndpointOrControl>>)>,
+        match_register: &mut HashMap<Want, (bool, Rc<RefCell<EndpointOrControl>>)>,
         own_endpoint_index: usize,
         all_devices: &[Rc<RefCell<EndpointOrControl>>],
         zerocopy: bool,
@@ -102,7 +102,7 @@ impl Endpoint {
     pub fn forward(
         &mut self,
         innerl2bridge: &mut Vec<EthernetAddress>,
-        match_register: &mut FnvHashMap<Want, (bool, Rc<RefCell<EndpointOrControl>>)>,
+        match_register: &mut HashMap<Want, (bool, Rc<RefCell<EndpointOrControl>>)>,
         own_endpoint_index: usize,
         all_devices: &[Rc<RefCell<EndpointOrControl>>],
         zerocopy: bool,
@@ -143,7 +143,7 @@ impl Endpoint {
     pub fn find_forward<'a>(
         &mut self,
         innerl2bridge: &'a mut Vec<EthernetAddress>,
-        match_register: &'a mut FnvHashMap<Want, (bool, Rc<RefCell<EndpointOrControl>>)>,
+        match_register: &'a mut HashMap<Want, (bool, Rc<RefCell<EndpointOrControl>>)>,
         own_endpoint_index: usize,
         read_buffer: &[u8],
         all_devices: &'a [Rc<RefCell<EndpointOrControl>>],
@@ -200,7 +200,7 @@ pub enum Target<'a> {
 
 // performs the matching
 fn get_endpoint<'a>(
-    match_register: &'a FnvHashMap<Want, (bool, Rc<RefCell<EndpointOrControl>>)>,
+    match_register: &'a HashMap<Want, (bool, Rc<RefCell<EndpointOrControl>>)>,
     own_endpoint_index: usize,
     all_devices: &'a [Rc<RefCell<EndpointOrControl>>],
     pkt_info: &PacketInfo,
@@ -256,3 +256,4 @@ fn mirror_to_all(
     }
     ret
 }
+

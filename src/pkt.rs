@@ -118,7 +118,7 @@ pub fn extract_pkt_info(frame: &[u8]) -> Option<(PacketInfo, EthernetAddress, Et
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Want {
     pub dst_addr: Ipv4Address,
     pub dst_port: Option<u16>,
