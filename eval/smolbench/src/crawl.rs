@@ -4,12 +4,15 @@ use smoltcp::socket::SocketSet;
 use smoltcp::socket::{TcpSocket, TcpSocketBuffer};
 use smoltcp::time::Instant; // Duration
 use smoltcp::wire::IpAddress;
+use std::fs::File;
 use std::io::Write;
 use std::net::{IpAddr, ToSocketAddrs};
 use std::str;
 use std::str::FromStr;
 
 use std::io::prelude::*;
+
+use twoway::find_bytes;
 
 #[cfg(feature = "multi")]
 use usnet_sockets::apimultithread::TcpStream;
@@ -32,13 +35,21 @@ use std::thread;
 use std::sync::Arc;
 
 #[cfg(not(feature = "single"))]
-pub fn run(host: &str, path: &str, times: usize, parallel: usize, printing: bool) {
+pub fn run(
+    host: &str,
+    path: &str,
+    times: usize,
+    parallel: usize,
+    printing: bool,
+    outfile: Option<String>,
+) {
     run_h(
         Arc::new(Box::new(host.to_string())),
         Arc::new(Box::new(path.to_string())),
         times,
         parallel,
         printing,
+        outfile,
     );
 }
 #[cfg(not(feature = "single"))]
@@ -48,14 +59,16 @@ pub fn run_h(
     times: usize,
     parallel: usize,
     printing: bool,
+    outfile: Option<String>,
 ) {
     let mut handles = vec![];
     for _ in 0..parallel {
         let host_string = host.clone();
         let path_string = path.clone();
+        let outfile_clone = outfile.clone();
         let h = thread::spawn(move || {
             for _ in 0..times / parallel {
-                handle_connection(&host_string, &path_string, printing);
+                handle_connection(&host_string, &path_string, printing, &outfile_clone);
             }
         });
         handles.push(h);
@@ -67,17 +80,22 @@ pub fn run_h(
 }
 
 #[cfg(feature = "single")]
-pub fn run(host: &str, path: &str, times: usize, _parallel: usize, printing: bool) {
+pub fn run(
+    host: &str,
+    path: &str,
+    times: usize,
+    _parallel: usize,
+    printing: bool,
+    outfile: Option<String>,
+) {
     for _ in 0..times {
-        handle_connection(host, path, printing);
+        handle_connection(host, path, printing, &outfile);
     }
 }
 
-fn handle_connection(host: &str, path: &str, printing: bool) {
+fn handle_connection(host: &str, path: &str, printing: bool, outfile: &Option<String>) {
     let mut stream = TcpStream::connect(host).unwrap();
-    if printing {
-        println!("connected");
-    }
+    eprintln!("connected");
     let req = format!(
         "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
         path, host
@@ -85,15 +103,47 @@ fn handle_connection(host: &str, path: &str, printing: bool) {
     stream.write_all(req.as_ref()).expect("cannot write");
     stream.flush().unwrap();
     let mut outp = vec![0; 1024];
+    let mut reading_header = true;
+    let mut writefile = if let Some(ref dumppath) = outfile {
+        File::create(&dumppath).ok()
+    } else {
+        None
+    };
     loop {
         match stream.read(&mut outp) {
             // could also use read_to_end/string but we want to see incoming data immediately
             Ok(0) => {
+                eprintln!("reading EOF");
                 break;
             }
             Ok(r) => {
-                if printing {
-                    print!("{}", str::from_utf8(&outp[..r]).unwrap_or("(invalid utf8)"));
+                let mut content_start = 0;
+                if reading_header {
+                    if let Some(end) = find_bytes(&outp[..r], "\r\n\r\n".as_bytes()) {
+                        content_start = end + 4;
+                        reading_header = false;
+                        eprintln!(
+                            "{}",
+                            str::from_utf8(&outp[..content_start]).unwrap_or("(invalid utf8)")
+                        );
+                    } else {
+                        eprintln!("{}", str::from_utf8(&outp[..r]).unwrap_or("(invalid utf8)"));
+                    }
+                }
+                // can now be true
+                if !reading_header {
+                    if printing {
+                        print!(
+                            "{}",
+                            str::from_utf8(&outp[content_start..r]).unwrap_or("(invalid utf8)")
+                        );
+                    }
+                    if let Some(ref mut dumpfile) = writefile {
+                        eprintln!("writing {} bytes to file", r);
+                        dumpfile
+                            .write_all(&outp[content_start..r])
+                            .expect("cannot write to file");
+                    }
                 }
             }
             Err(e) => {
@@ -101,12 +151,10 @@ fn handle_connection(host: &str, path: &str, printing: bool) {
             }
         };
     }
-    if printing {
-        println!("done, stream closed");
-    }
+    eprintln!("done, stream closed");
 }
 
-pub fn run2(host: &str) {
+pub fn run2(host: &str, path: &str) {
     println!("small HTTP example");
     let confvar = env::var("USNET_SOCKETS").unwrap();
     let conf: StcpBackend = serde_json::from_str(&confvar).unwrap();
@@ -122,8 +170,11 @@ pub fn run2(host: &str) {
     println!("REDUCE_MTU_BY: {:?}", reduce_mtu_by);
     let (fd, mut iface) = conf.to_interface(waiting_poll, reduce_mtu_by);
 
-    let tcp_rx_buffer = TcpSocketBuffer::new(vec![0; 1024]);
-    let tcp_tx_buffer = TcpSocketBuffer::new(vec![0; 1024]);
+    let socket_buffer_size =
+        usize::from_str(&env::var("SOCKET_BUFFER").unwrap_or("500000".to_string()))
+            .expect("SOCKET_BUFFER not an usize");
+    let tcp_rx_buffer = TcpSocketBuffer::new(vec![0; socket_buffer_size]);
+    let tcp_tx_buffer = TcpSocketBuffer::new(vec![0; socket_buffer_size]);
     let tcp_socket = TcpSocket::new(tcp_rx_buffer, tcp_tx_buffer);
 
     let mut sockets = SocketSet::new(vec![]);
@@ -165,11 +216,9 @@ pub fn run2(host: &str) {
                 }
                 State::Request if socket.may_send() && socket.may_recv() => {
                     println!("sending request");
-                    let http_get = "GET ".to_owned()
-                        + "/debian/pool/main/r/redeclipse-data/redeclipse-data_1.5.8-1_all.deb"
-                        + " HTTP/1.1\r\n";
+                    let http_get = "GET ".to_owned() + path + " HTTP/1.1\r\n";
                     socket.send_slice(http_get.as_ref()).expect("cannot send");
-                    let http_host = "Host: ".to_owned() + "ftp.kaist.ac.kr" + "\r\n";
+                    let http_host = "Host: ".to_owned() + host + "\r\n";
                     socket.send_slice(http_host.as_ref()).expect("cannot send");
                     socket
                         .send_slice(b"Connection: close\r\n")

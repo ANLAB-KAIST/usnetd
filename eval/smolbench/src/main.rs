@@ -10,6 +10,8 @@ extern crate rand;
 
 extern crate serde_json;
 
+extern crate twoway;
+
 mod smolapi;
 mod smolserver;
 
@@ -75,6 +77,7 @@ fn main() {
             .args_from_usage("-t=[AMOUNT]                   'Number of queries'")
             .args_from_usage("-p=[THREADS]                   'Parallel queries'")
             .args_from_usage("-q                             'Do not print answers'")
+            .args_from_usage("-o=[OUTFILE]                    'Dump response body to file'")
             .args_from_usage("--smoltcp-no-api     'Use original smoltcp functions (-x is missing)'")
         )
         .subcommand(
@@ -130,7 +133,10 @@ fn main() {
         }
     } else if let Some(crawlmatches) = matches.subcommand_matches("crawl") {
         if crawlmatches.is_present("smoltcp-no-api") {
-            crawl::run2(crawlmatches.value_of("HOST").unwrap());
+            crawl::run2(
+                crawlmatches.value_of("HOST").unwrap(),
+                crawlmatches.value_of("PATH").unwrap_or("/"),
+            );
         } else {
             crawl::run(
                 crawlmatches.value_of("HOST").unwrap(),
@@ -138,6 +144,7 @@ fn main() {
                 usize::from_str(crawlmatches.value_of("t").unwrap_or("1")).unwrap(),
                 usize::from_str(crawlmatches.value_of("p").unwrap_or("1")).unwrap(),
                 !crawlmatches.is_present("q"),
+                crawlmatches.value_of("o").map(|s| s.to_string()),
             );
         }
     } else if let Some(httpdmatches) = matches.subcommand_matches("httpd") {
