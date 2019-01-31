@@ -72,8 +72,9 @@ fn main() {
         .subcommand(
             clap::SubCommand::with_name("crawl")
             .about("Fetch HTTP (USNET_SOCKETS backend config)")
-            .args_from_usage("<HOST>                  'host:port'")
+            .args_from_usage("<ADDRESS>                  'addr:port (can use domain name when system resolver works, otherwise provide IP and use -h)'")
             .args_from_usage("[PATH]                  'HTTP path like /'")
+            .args_from_usage("-d=[HOSTNAME]                   'Set hostname for HTTP request (adding :port is optional'")
             .args_from_usage("-t=[AMOUNT]                   'Number of queries'")
             .args_from_usage("-p=[THREADS]                   'Parallel queries'")
             .args_from_usage("-q                             'Do not print answers'")
@@ -134,17 +135,18 @@ fn main() {
     } else if let Some(crawlmatches) = matches.subcommand_matches("crawl") {
         if crawlmatches.is_present("smoltcp-no-api") {
             crawl::run2(
-                crawlmatches.value_of("HOST").unwrap(),
+                crawlmatches.value_of("ADDRESS").unwrap(),
                 crawlmatches.value_of("PATH").unwrap_or("/"),
             );
         } else {
             crawl::run(
-                crawlmatches.value_of("HOST").unwrap(),
+                crawlmatches.value_of("ADDRESS").unwrap(),
                 crawlmatches.value_of("PATH").unwrap_or("/"),
                 usize::from_str(crawlmatches.value_of("t").unwrap_or("1")).unwrap(),
                 usize::from_str(crawlmatches.value_of("p").unwrap_or("1")).unwrap(),
                 !crawlmatches.is_present("q"),
                 crawlmatches.value_of("o").map(|s| s.to_string()),
+                crawlmatches.value_of("d").map(|s| s.to_string()),
             );
         }
     } else if let Some(httpdmatches) = matches.subcommand_matches("httpd") {

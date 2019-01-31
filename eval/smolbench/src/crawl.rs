@@ -42,6 +42,7 @@ pub fn run(
     parallel: usize,
     printing: bool,
     outfile: Option<String>,
+    hostname: Option<String>,
 ) {
     run_h(
         Arc::new(Box::new(host.to_string())),
@@ -50,6 +51,7 @@ pub fn run(
         parallel,
         printing,
         outfile,
+        hostname,
     );
 }
 #[cfg(not(feature = "single"))]
@@ -60,15 +62,23 @@ pub fn run_h(
     parallel: usize,
     printing: bool,
     outfile: Option<String>,
+    hostname: Option<String>,
 ) {
     let mut handles = vec![];
     for _ in 0..parallel {
         let host_string = host.clone();
         let path_string = path.clone();
         let outfile_clone = outfile.clone();
+        let hostname_clone = hostname.clone();
         let h = thread::spawn(move || {
             for _ in 0..times / parallel {
-                handle_connection(&host_string, &path_string, printing, &outfile_clone);
+                handle_connection(
+                    &host_string,
+                    &path_string,
+                    printing,
+                    &outfile_clone,
+                    &hostname_clone,
+                );
             }
         });
         handles.push(h);
@@ -87,18 +97,26 @@ pub fn run(
     _parallel: usize,
     printing: bool,
     outfile: Option<String>,
+    hostname: Option<String>,
 ) {
     for _ in 0..times {
-        handle_connection(host, path, printing, &outfile);
+        handle_connection(host, path, printing, &outfile, &hostname);
     }
 }
 
-fn handle_connection(host: &str, path: &str, printing: bool, outfile: &Option<String>) {
+fn handle_connection(
+    host: &str,
+    path: &str,
+    printing: bool,
+    outfile: &Option<String>,
+    hostname: &Option<String>,
+) {
     let mut stream = TcpStream::connect(host).unwrap();
     eprintln!("connected");
     let req = format!(
         "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
-        path, host
+        path,
+        hostname.as_ref().unwrap_or(&host.to_string())
     );
     stream.write_all(req.as_ref()).expect("cannot write");
     stream.flush().unwrap();
