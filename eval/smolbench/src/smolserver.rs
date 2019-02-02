@@ -48,7 +48,7 @@ pub fn run(bufsize: usize, rxtx_size: usize, reverse: bool) {
     let mut inp = vec![0; bufsize];
 
     iface
-        .add_port_match([0, 0, 0, 0].into(), 8080, IpProtocol::Tcp)
+        .add_port_match([0, 0, 0, 0].into(), Some(8080), None, None, IpProtocol::Tcp)
         .expect("cannot bind");
 
     loop {

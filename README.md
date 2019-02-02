@@ -81,6 +81,7 @@ Only packet matches for listening ports need to be registered. For outgoing conn
 
 # TODO
 
+* Manually add local MAC to list of own MACs for testing with pkt-gen on netmap pipes
 * Multiple entries for static configuration of netmap pipes as IPC channels
 * Support static configuration for Unix domain sockets as packet IPC channels
 * Handle broadcast and multicast packets
