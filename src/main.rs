@@ -23,9 +23,8 @@ extern crate smoltcp;
 
 #[cfg(feature = "pcap")]
 use smoltcp::phy::PcapLinkType;
-use smoltcp::wire::{IpProtocol, Ipv4Address};
-
 use smoltcp::phy::PcapSink;
+use smoltcp::wire::{EthernetAddress, IpProtocol, Ipv4Address};
 
 extern crate hashbrown;
 use hashbrown::HashMap;
@@ -591,6 +590,8 @@ fn main() {
                 by commas, starting with a pipe ID of 4094 and counting downwards,
                 i.e., netmap:eth0{4094 (currently, only one port per pipe can be specified in
                 this format and the same IP is used as the IP of the kernel)
+[ADD_MACS]:     Adds local MACs for to the bridge for endpoints that do not send out packets
+                so that their MAC could be learned. Takes a list separated by commas.
 [NO_ZERO_COPY]: Optionally turns off netmap zero-copy if set to 'true'
 [PCAP_LOG]: If built with the 'pcap' feature, specifies dump file location
 [RUST_LOG]: Can be one of 'error', 'warn', 'info', 'debug', 'trace' ('trace' only for debug builds)
@@ -618,6 +619,18 @@ fn main() {
 
     let mut match_register = HashMap::default();
     let mut innerl2bridge = vec![];
+    match env::var("ADD_MACS") {
+        Ok(macs) => {
+            for mac in macs.split(',') {
+                let m = mac
+                    .split(':')
+                    .map(|s| u8::from_str_radix(s, 16).unwrap())
+                    .collect::<Vec<_>>();
+                innerl2bridge.push(EthernetAddress([m[0], m[1], m[2], m[3], m[4], m[5]]));
+            }
+        }
+        _ => {}
+    }
     let mut pipe_monitor = vec![];
     let mut all_devices = vec![]; // only managed by Endpoints.add() etc
     let mut endpoints = Endpoints::new();

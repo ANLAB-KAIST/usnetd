@@ -48,6 +48,8 @@ Other variables can be set to configure a static netmap pipe or forwarding of a 
                     by commas, starting with a pipe ID of 4094 and counting downwards,
                     i.e., netmap:eth0{4094 (currently, only one port per pipe can be specified in
                     this format and the same IP is used as the IP of the kernel)
+    [ADD_MACS]:     Adds local MACs for to the bridge for endpoints that do not send out packets
+                    so that their MAC could be learned. Takes a list separated by commas.
     [NO_ZERO_COPY]: Optionally turns off netmap zero-copy if set to 'true'
     [PCAP_LOG]: If built with the 'pcap' feature, specifies dump file location
     [RUST_LOG]: Can be one of 'error', 'warn', 'info', 'debug', 'trace' ('trace' only for debug builds)
@@ -81,7 +83,6 @@ Only packet matches for listening ports need to be registered. For outgoing conn
 
 # TODO
 
-* Manually add local MAC to list of own MACs for testing with pkt-gen on netmap pipes
 * Multiple entries for static configuration of netmap pipes as IPC channels
 * Support static configuration for Unix domain sockets as packet IPC channels
 * Handle broadcast and multicast packets

@@ -256,4 +256,3 @@ fn mirror_to_all(
     }
     ret
 }
-
