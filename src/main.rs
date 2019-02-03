@@ -592,7 +592,8 @@ fn main() {
                 this format and the same IP is used as the IP of the kernel)
 [ADD_MACS]:     Adds local MACs for to the bridge for endpoints that do not send out packets
                 so that their MAC could be learned. Takes a list separated by commas.
-[NO_ZERO_COPY]: Optionally turns off netmap zero-copy if set to 'true'
+[NO_HOST_RINGS]: Disables forwarding for host kernel packets if set to 'true'
+[NO_ZERO_COPY]: Turns off netmap zero-copy forwarding if set to 'true'
 [PCAP_LOG]: If built with the 'pcap' feature, specifies dump file location
 [RUST_LOG]: Can be one of 'error', 'warn', 'info', 'debug', 'trace' ('trace' only for debug builds)
 ").as_ref())
@@ -610,6 +611,8 @@ fn main() {
 
     let zerocopy = env::var("NO_ZERO_COPY") != Ok("true".to_string());
     info!("using zero copy: {}", zerocopy);
+    let host_rings = env::var("NO_HOST_RINGS") != Ok("true".to_string());
+    info!("forwarding kernel packets: {}", host_rings);
 
     let gid = env::var("ALLOW_GID")
         .ok()
@@ -628,6 +631,7 @@ fn main() {
                     .collect::<Vec<_>>();
                 innerl2bridge.push(EthernetAddress([m[0], m[1], m[2], m[3], m[4], m[5]]));
             }
+            info!("prepopulated bridge MACs: {:?}", innerl2bridge);
         }
         _ => {}
     }
@@ -665,22 +669,24 @@ fn main() {
             listening: vec![],
         })));
         endpoints.add(&mut all_devices, nic.clone());
-        let host = Rc::new(RefCell::new(EndpointOrControl::Ept(Endpoint {
-            for_nic: Some(nic),
-            client_path: None,
-            dev: EndpointDevice::HostRing(
-                Netmap::new(
-                    &("netmap:".to_string() + interface + "^"),
-                    interface,
-                    true,
-                    None,
-                )
-                .unwrap(),
-                interface.to_string(),
-            ),
-            listening: vec![],
-        })));
-        endpoints.add(&mut all_devices, host);
+        if host_rings {
+            let host = Rc::new(RefCell::new(EndpointOrControl::Ept(Endpoint {
+                for_nic: Some(nic),
+                client_path: None,
+                dev: EndpointDevice::HostRing(
+                    Netmap::new(
+                        &("netmap:".to_string() + interface + "^"),
+                        interface,
+                        true,
+                        None,
+                    )
+                    .unwrap(),
+                    interface.to_string(),
+                ),
+                listening: vec![],
+            })));
+            endpoints.add(&mut all_devices, host);
+        }
     }
 
     if let Ok(port_list) = env::var("DEBUG_PORTS") {

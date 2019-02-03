@@ -50,7 +50,8 @@ Other variables can be set to configure a static netmap pipe or forwarding of a 
                     this format and the same IP is used as the IP of the kernel)
     [ADD_MACS]:     Adds local MACs for to the bridge for endpoints that do not send out packets
                     so that their MAC could be learned. Takes a list separated by commas.
-    [NO_ZERO_COPY]: Optionally turns off netmap zero-copy if set to 'true'
+    [NO_HOST_RINGS]: Disables forwarding for host kernel packets if set to 'true'
+    [NO_ZERO_COPY]: Turns off netmap zero-copy forwarding if set to 'true'
     [PCAP_LOG]: If built with the 'pcap' feature, specifies dump file location
     [RUST_LOG]: Can be one of 'error', 'warn', 'info', 'debug', 'trace' ('trace' only for debug builds)
 
@@ -89,5 +90,6 @@ Only packet matches for listening ports need to be registered. For outgoing conn
 * Correctly forward packets with IP fragmentation
 * IPv6
 * ICMP handling and generation of error messages and TCP RSTs (maybe through spawning a dedicated userspace network stack on default)
+* Clean up old kernel matching rules (periodically check if for each kernel rule an open socket can be found in /proc/net/udp /proc/net/tcp)
 * Multi-core scalability
 * Other backends: macvtap (plus a TAP interface for the kernel with high priority), DPDK (plus a KNI interface), or integration with VALE-bpf, AF_XDP, or PFQ
