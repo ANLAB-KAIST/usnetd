@@ -90,6 +90,5 @@ Only packet matches for listening ports need to be registered. For outgoing conn
 * Correctly forward packets with IP fragmentation
 * IPv6
 * ICMP handling and generation of error messages and TCP RSTs (maybe through spawning a dedicated userspace network stack on default)
-* Clean up old kernel matching rules (periodically check if for each kernel rule an open socket can be found in /proc/net/udp /proc/net/tcp)
 * Multi-core scalability
 * Other backends: macvtap (plus a TAP interface for the kernel with high priority), DPDK (plus a KNI interface), or integration with VALE-bpf, AF_XDP, or PFQ

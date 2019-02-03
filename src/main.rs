@@ -40,16 +40,18 @@ use nix::unistd::{chown, Gid};
 use nix::poll::{poll, EventFlags, PollFd};
 
 use std::cell::RefCell;
+use std::env;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::rc::Rc;
-
-use std::env;
+use std::thread;
+use std::time::Duration;
 
 use std::os::raw::c_int;
 
 use std::fs;
 #[cfg(feature = "pcap")]
 use std::io;
+use std::io::Read;
 use std::path::Path;
 use std::str;
 use std::str::FromStr;
@@ -350,6 +352,7 @@ fn parse_port_list(port_list: &str) -> Vec<(String, u8, Option<u16>, Option<Stri
 enum EntryChange {
     Add(Rc<RefCell<EndpointOrControl>>),
     Remove(Rc<RefCell<EndpointOrControl>>),
+    CleanupKernel,
 }
 
 fn act_on(
@@ -574,6 +577,41 @@ fn pcap_dump() -> Option<Box<PcapSink>> {
     None
 }
 
+fn read_ports_from(proc_net_tcp_or_udp: &str) -> Vec<u16> {
+    let mut f = fs::File::open(proc_net_tcp_or_udp).expect("cannot open /proc/net/tcp|udp");
+    let mut buffer = String::new();
+    f.read_to_string(&mut buffer)
+        .expect("cannot read from /proc/net/tcp|udp");
+    buffer
+        .lines()
+        .skip(1)
+        .map(|s| {
+            u16::from_str_radix(
+                s.split(':')
+                    .nth(2)
+                    .expect("misparsed")
+                    .split(' ')
+                    .nth(0)
+                    .expect("misparsed"),
+                16,
+            )
+            .expect("cannot parse hex port")
+        })
+        .collect::<Vec<_>>()
+}
+
+fn cleanup_kernel() {
+    let timer_path = SOCKET_PATH.to_string() + "timer";
+    let _ = fs::remove_file(&timer_path);
+    let timer = UnixDatagram::bind(&timer_path).expect("Cannot bind timer socket");
+    loop {
+        thread::sleep(Duration::from_secs(60));
+        timer
+            .send_to("cleanup_kernel".as_bytes(), SOCKET_PATH)
+            .expect("cannot send to service unix domain socket");
+    }
+}
+
 fn main() {
     let matches = clap::App::new("usnetd")
      .about("Memory-safe L4 Switch for Userspace Network Stacks")
@@ -723,6 +761,8 @@ fn main() {
     }
     // finished processing static configuration
 
+    let _cleanup_thread = thread::spawn(cleanup_kernel);
+
     let mut client_buf = vec![0; 4000];
     let mut endpoint_changes = vec![];
 
@@ -751,7 +791,11 @@ fn main() {
                                             &mut pipe_monitor,
                                         );
                                     } else {
-                                        error!("no json: {}", client_msg_str);
+                                        if client_msg_str == "cleanup_kernel" {
+                                            endpoint_changes.push(EntryChange::CleanupKernel);
+                                        } else {
+                                            error!("no json: {}", client_msg_str);
+                                        }
                                     }
                                 } else {
                                     error!("broken string");
@@ -802,6 +846,45 @@ fn main() {
                         pipe_monitor.retain(|(_, rc)| !Rc::ptr_eq(rc, &e));
                     }
                     endpoints.remove(&mut all_devices, e);
+                }
+                EntryChange::CleanupKernel => {
+                    let open_tcp_ports = read_ports_from("/proc/net/tcp");
+                    let open_udp_ports = read_ports_from("/proc/net/udp");
+                    debug!("Before cleanup the match rules are:");
+                    for k in match_register.keys() {
+                        debug!("* {:?}", k);
+                    }
+                    for endpoint_ref in all_devices.iter() {
+                        let kernel_ring = match *endpoint_ref.borrow() {
+                            EndpointOrControl::Ept(ref endpoint) => {
+                                endpoint.dev.get_host_ring().is_some()
+                            }
+                            _ => false,
+                        };
+                        if kernel_ring {
+                            match_register.retain(|wantrule, (sticky, rc)| {
+                                !(Rc::ptr_eq(rc, &endpoint_ref) && !*sticky && {
+                                    match wantrule.dst_port {
+                                        Some(dst_port) => {
+                                            if wantrule.protocol == u8::from(IpProtocol::Tcp) {
+                                                !open_tcp_ports.contains(&dst_port)
+                                            } else if wantrule.protocol == u8::from(IpProtocol::Udp)
+                                            {
+                                                !open_udp_ports.contains(&dst_port)
+                                            } else {
+                                                true
+                                            } // i.e., matches for protocols which have no ports in /proc/net/protocolname are cleared regularly
+                                        }
+                                        None => true, // i.e., matches for protocols without ports are cleared regularly
+                                    }
+                                })
+                            });
+                        }
+                    }
+                    debug!("After cleanup the match rules are:");
+                    for k in match_register.keys() {
+                        debug!("* {:?}", k);
+                    }
                 }
             }
         }
