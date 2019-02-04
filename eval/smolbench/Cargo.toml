@@ -21,3 +21,7 @@ host = []
 single = []
 
 printout = []
+
+[profile.release]
+codegen-units = 1
+lto = true
