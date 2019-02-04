@@ -29,3 +29,7 @@ clap = "2.31.2"
 [features]
 default = []
 pcap = []
+
+[profile.release]
+codegen-units = 1
+lto = true
