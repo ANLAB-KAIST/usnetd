@@ -171,9 +171,17 @@ impl Endpoint {
                     .listening
                     .contains(&(want.dst_addr, want.protocol, want.dst_port))
                 {
-                    let _ = match_register
-                        .entry(want)
-                        .or_insert((false, all_devices[own_endpoint_index].clone()));
+                    let entry = match_register.entry(want);
+                    trace!(
+                        "has already an automatic forward rule: {}",
+                        match entry {
+                            hashbrown::hash_map::Entry::Vacant(_) => false,
+                            hashbrown::hash_map::Entry::Occupied(_) => true,
+                        }
+                    );
+                    let _ = entry.or_insert((false, all_devices[own_endpoint_index].clone()));
+                } else {
+                    trace!("explicit forwarding rule exists");
                 }
             }
             if !incoming_packet && !innerl2bridge.contains(&ethdst) {
@@ -184,10 +192,13 @@ impl Endpoint {
                     get_endpoint(match_register, own_endpoint_index, all_devices, &pkt_info);
                 if target.is_none() {
                     debug!("Drop recv {:?}", pkt_info);
+                } else {
+                    trace!("Forwarding {:?}", pkt_info);
                 }
                 (target.map(|e| Target::Endpoint(e)), None)
             }
         } else {
+            trace!("dropped unkown packet");
             (None, None)
         }
     }
