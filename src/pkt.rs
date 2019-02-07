@@ -26,6 +26,47 @@ impl PacketInfo {
             _ => false,
         }
     }
+    pub fn is_dhcp_request(&self) -> bool {
+        match self {
+            PacketInfo::Ipv4 {
+                src_addr,
+                dst_addr,
+                src_port,
+                dst_port,
+                protocol,
+            } => {
+                if *protocol == IpProtocol::Udp
+                    && src_addr.is_unspecified()
+                    && *src_port == Some(68)
+                    && *dst_port == Some(67)
+                    && dst_addr.as_bytes()[3] == 255
+                {
+                    true
+                } else {
+                    false
+                }
+            }
+            PacketInfo::Arp => false,
+        }
+    }
+    pub fn is_dhcp_answer(&self) -> bool {
+        match self {
+            PacketInfo::Ipv4 {
+                src_addr: _,
+                dst_addr: _,
+                src_port,
+                dst_port,
+                protocol,
+            } => {
+                if *protocol == IpProtocol::Udp && *src_port == Some(67) && *dst_port == Some(68) {
+                    true
+                } else {
+                    false
+                }
+            }
+            PacketInfo::Arp => false,
+        }
+    }
     /// converts a sent-out packet to a match entry for answers (only of the other's specific (port,ip) pair)
     pub fn to_want(&self) -> Want {
         match self {

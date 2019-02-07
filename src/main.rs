@@ -294,6 +294,7 @@ fn add_static_pipe(
         for_nic: Some(anic),
         client_path: None,
         listening: vec![],
+        next_dhcp_endpoint: None,
     })));
     endpoints.add(devices, epref.clone());
     info!("added static pipe: {}, use with {}", pipename, "{");
@@ -392,6 +393,7 @@ fn act_on(
                                 for_nic: Some(anic),
                                 client_path: Some(client_path.to_path_buf()),
                                 listening: vec![],
+                                next_dhcp_endpoint: None,
                             };
                             let endpoint_rc =
                                 Rc::new(RefCell::new(EndpointOrControl::Ept(endpoint)));
@@ -452,6 +454,7 @@ fn act_on(
                                     for_nic: Some(anic),
                                     client_path: Some(client_path.to_path_buf()),
                                     listening: vec![],
+                                    next_dhcp_endpoint: None,
                                 };
                                 let endpoint_rc =
                                     Rc::new(RefCell::new(EndpointOrControl::Ept(endpoint)));
@@ -705,6 +708,7 @@ fn main() {
                 all_pipes(),
             ),
             listening: vec![],
+            next_dhcp_endpoint: None,
         })));
         endpoints.add(&mut all_devices, nic.clone());
         if host_rings {
@@ -722,6 +726,7 @@ fn main() {
                     interface.to_string(),
                 ),
                 listening: vec![],
+                next_dhcp_endpoint: None,
             })));
             endpoints.add(&mut all_devices, host);
         }

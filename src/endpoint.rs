@@ -23,6 +23,7 @@ pub struct Endpoint {
     pub for_nic: Option<Rc<RefCell<EndpointOrControl>>>,
     pub client_path: Option<PathBuf>,
     pub listening: Vec<(Ipv4Address, u8, Option<u16>)>,
+    pub next_dhcp_endpoint: Option<Rc<RefCell<EndpointOrControl>>>,
 }
 
 impl Endpoint {
@@ -51,8 +52,9 @@ impl Endpoint {
                 all_devices,
             );
             if let Some(target_wrap) = target {
-                let target_ref = match target_wrap {
+                let target_ref = match &target_wrap {
                     Target::Endpoint(end_ref) => end_ref,
+                    Target::EndpointRef(ep) => &ep,
                     Target::Nic => self.for_nic.as_ref().unwrap(),
                 };
                 let mut target_outer = target_ref.borrow_mut();
@@ -171,15 +173,27 @@ impl Endpoint {
                     .listening
                     .contains(&(want.dst_addr, want.protocol, want.dst_port))
                 {
-                    let entry = match_register.entry(want);
-                    trace!(
-                        "has already an automatic forward rule: {}",
-                        match entry {
-                            hashbrown::hash_map::Entry::Vacant(_) => false,
-                            hashbrown::hash_map::Entry::Occupied(_) => true,
+                    if pkt_info.is_dhcp_request() {
+                        match &self.for_nic {
+                            Some(nic_rc) => {
+                                let mut nic = nic_rc.borrow_mut();
+                                nic.ept_mut().next_dhcp_endpoint =
+                                    Some(all_devices[own_endpoint_index].clone());
+                                trace!("set this endpoint as next DHCP receiver for the NIC");
+                            }
+                            _ => {}
                         }
-                    );
-                    let _ = entry.or_insert((false, all_devices[own_endpoint_index].clone()));
+                    } else {
+                        let entry = match_register.entry(want);
+                        trace!(
+                            "has already an automatic forward rule: {}",
+                            match entry {
+                                hashbrown::hash_map::Entry::Vacant(_) => false,
+                                hashbrown::hash_map::Entry::Occupied(_) => true,
+                            }
+                        );
+                        let _ = entry.or_insert((false, all_devices[own_endpoint_index].clone()));
+                    }
                 } else {
                     trace!("explicit forwarding rule exists");
                 }
@@ -190,12 +204,29 @@ impl Endpoint {
                 // bounce back not allowed, NIC as target not allowed
                 let target =
                     get_endpoint(match_register, own_endpoint_index, all_devices, &pkt_info);
-                if target.is_none() {
-                    debug!("Drop recv {:?}", pkt_info);
-                } else {
-                    trace!("Forwarding {:?}", pkt_info);
+                match target {
+                    None => {
+                        if pkt_info.is_dhcp_answer() {
+                            match self.next_dhcp_endpoint.take() {
+                                Some(ep) => {
+                                    trace!("forwarding dhcp answer {:?}", pkt_info);
+                                    (Some(Target::EndpointRef(ep)), None)
+                                }
+                                None => {
+                                    trace!("saw DHCP answer without endpoint");
+                                    (None, None)
+                                }
+                            }
+                        } else {
+                            debug!("Drop recv {:?}", pkt_info);
+                            (None, None)
+                        }
+                    }
+                    Some(e) => {
+                        trace!("Forwarding {:?}", pkt_info);
+                        (Some(Target::Endpoint(e)), None)
+                    }
                 }
-                (target.map(|e| Target::Endpoint(e)), None)
             }
         } else {
             trace!("dropped unkown packet");
@@ -206,6 +237,7 @@ impl Endpoint {
 
 pub enum Target<'a> {
     Endpoint(&'a Rc<RefCell<EndpointOrControl>>),
+    EndpointRef(Rc<RefCell<EndpointOrControl>>),
     Nic,
 }
 
