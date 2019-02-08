@@ -24,6 +24,8 @@ pub struct Endpoint {
     pub client_path: Option<PathBuf>,
     pub listening: Vec<(Ipv4Address, u8, Option<u16>)>,
     pub next_dhcp_endpoint: Option<Rc<RefCell<EndpointOrControl>>>,
+    pub last_pkt: Option<PacketInfo>,
+    pub last_pkt_dst: Option<Rc<RefCell<EndpointOrControl>>>,
 }
 
 impl Endpoint {
@@ -56,6 +58,7 @@ impl Endpoint {
                     Target::Endpoint(end_ref) => end_ref,
                     Target::EndpointRef(ep) => &ep,
                     Target::Nic => self.for_nic.as_ref().unwrap(),
+                    Target::Last => self.last_pkt_dst.as_ref().unwrap(),
                 };
                 let mut target_outer = target_ref.borrow_mut();
                 let mut target = target_outer.ept_mut();
@@ -152,6 +155,15 @@ impl Endpoint {
     ) -> (Option<Target<'a>>, Option<Vec<usize>>) {
         let incoming_packet = self.dev.get_nic().is_some();
         if let Some((pkt_info, ethsrc, ethdst)) = extract_pkt_info(read_buffer) {
+            if match &self.last_pkt {
+                None => false,
+                Some(pkt) => pkt == &pkt_info,
+            } {
+                trace!("Found old decision for {:?}", pkt_info);
+                return (self.last_pkt_dst.as_ref().map(|_| Target::Last), None);
+            } else {
+                self.last_pkt = None;
+            }
             if !incoming_packet && ethsrc.is_unicast() && !innerl2bridge.contains(&ethsrc) {
                 innerl2bridge.push(ethsrc);
             }
@@ -166,6 +178,7 @@ impl Endpoint {
                 debug!("Drop localhost packet {:?}", pkt_info);
                 return (None, None);
             }
+            self.last_pkt = Some(pkt_info.clone());
             if !incoming_packet {
                 let want = pkt_info.to_want();
                 trace!("Converted to {:?}", want);
@@ -180,26 +193,37 @@ impl Endpoint {
                                 nic.ept_mut().next_dhcp_endpoint =
                                     Some(all_devices[own_endpoint_index].clone());
                                 trace!("set this endpoint as next DHCP receiver for the NIC");
+                                self.last_pkt = None; // needed to force refreshing of next_dhcp_endpoint
                             }
                             _ => {}
                         }
                     } else {
                         let entry = match_register.entry(want);
-                        trace!(
-                            "has already an automatic forward rule: {}",
-                            match entry {
-                                hashbrown::hash_map::Entry::Vacant(_) => false,
-                                hashbrown::hash_map::Entry::Occupied(_) => true,
+                        let old_entry = match entry {
+                            hashbrown::hash_map::Entry::Vacant(_) => false,
+                            hashbrown::hash_map::Entry::Occupied(_) => true,
+                        };
+                        if !old_entry {
+                            // delete cache at NIC
+                            match &self.for_nic {
+                                Some(ne) => {
+                                    let mut ni = ne.borrow_mut();
+                                    ni.ept_mut().last_pkt = None;
+                                }
+                                None => {
+                                    panic!("should have a NIC");
+                                }
                             }
-                        );
+                        }
+                        trace!("has already an automatic forward rule: {}", old_entry);
                         let _ = entry.or_insert((false, all_devices[own_endpoint_index].clone()));
                     }
                 } else {
                     trace!("explicit forwarding rule exists");
                 }
             }
-            if !incoming_packet && !innerl2bridge.contains(&ethdst) {
-                (Some(Target::Nic), None) // forward to endpoint's NIC
+            let decision = if !incoming_packet && !innerl2bridge.contains(&ethdst) {
+                Some(Target::Nic) // forward to endpoint's NIC
             } else {
                 // bounce back not allowed, NIC as target not allowed
                 let target =
@@ -210,24 +234,32 @@ impl Endpoint {
                             match self.next_dhcp_endpoint.take() {
                                 Some(ep) => {
                                     trace!("forwarding dhcp answer {:?}", pkt_info);
-                                    (Some(Target::EndpointRef(ep)), None)
+                                    self.last_pkt = None; // needed to delete information for following packets
+                                    Some(Target::EndpointRef(ep))
                                 }
                                 None => {
                                     trace!("saw DHCP answer without endpoint");
-                                    (None, None)
+                                    None
                                 }
                             }
                         } else {
                             debug!("Drop recv {:?}", pkt_info);
-                            (None, None)
+                            None
                         }
                     }
                     Some(e) => {
                         trace!("Forwarding {:?}", pkt_info);
-                        (Some(Target::Endpoint(e)), None)
+                        Some(Target::Endpoint(e))
                     }
                 }
-            }
+            };
+            self.last_pkt_dst = decision.as_ref().map(|tar| match tar {
+                Target::Nic => self.for_nic.as_ref().unwrap().clone(),
+                Target::Endpoint(a_ref) => (*a_ref).clone(),
+                Target::EndpointRef(a) => a.clone(),
+                Target::Last => panic!("not intended"),
+            });
+            (decision, None)
         } else {
             trace!("dropped unkown packet");
             (None, None)
@@ -239,6 +271,7 @@ pub enum Target<'a> {
     Endpoint(&'a Rc<RefCell<EndpointOrControl>>),
     EndpointRef(Rc<RefCell<EndpointOrControl>>),
     Nic,
+    Last,
 }
 
 // performs the matching

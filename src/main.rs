@@ -247,6 +247,16 @@ fn add_listening_match(
             .ept_mut()
             .listening
             .push((want.dst_addr, want.protocol, want.dst_port));
+        // delete cache
+        match &endpoint_inner.ept_mut().for_nic {
+            Some(ne) => {
+                let mut ni = ne.borrow_mut();
+                ni.ept_mut().last_pkt = None;
+            }
+            None => {
+                panic!("listening match should be registered for endpoint, not NIC");
+            }
+        }
     }
     match_register.insert(want, (sticky, endpoint));
     debug!("Now the match rules are:");
@@ -295,6 +305,8 @@ fn add_static_pipe(
         client_path: None,
         listening: vec![],
         next_dhcp_endpoint: None,
+        last_pkt: None,
+        last_pkt_dst: None,
     })));
     endpoints.add(devices, epref.clone());
     info!("added static pipe: {}, use with {}", pipename, "{");
@@ -394,6 +406,8 @@ fn act_on(
                                 client_path: Some(client_path.to_path_buf()),
                                 listening: vec![],
                                 next_dhcp_endpoint: None,
+                                last_pkt: None,
+                                last_pkt_dst: None,
                             };
                             let endpoint_rc =
                                 Rc::new(RefCell::new(EndpointOrControl::Ept(endpoint)));
@@ -455,6 +469,8 @@ fn act_on(
                                     client_path: Some(client_path.to_path_buf()),
                                     listening: vec![],
                                     next_dhcp_endpoint: None,
+                                    last_pkt: None,
+                                    last_pkt_dst: None,
                                 };
                                 let endpoint_rc =
                                     Rc::new(RefCell::new(EndpointOrControl::Ept(endpoint)));
@@ -709,6 +725,8 @@ fn main() {
             ),
             listening: vec![],
             next_dhcp_endpoint: None,
+            last_pkt: None,
+            last_pkt_dst: None,
         })));
         endpoints.add(&mut all_devices, nic.clone());
         if host_rings {
@@ -727,6 +745,8 @@ fn main() {
                 ),
                 listening: vec![],
                 next_dhcp_endpoint: None,
+                last_pkt: None,
+                last_pkt_dst: None,
             })));
             endpoints.add(&mut all_devices, host);
         }

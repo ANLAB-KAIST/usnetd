@@ -8,7 +8,7 @@ use smoltcp::wire::{
     EthernetAddress, EthernetFrame, EthernetProtocol, IpProtocol, Ipv4Address, Ipv4Packet,
 };
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum PacketInfo {
     Ipv4 {
         src_addr: Ipv4Address,

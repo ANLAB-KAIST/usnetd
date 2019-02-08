@@ -87,7 +87,7 @@ Only packet matches for listening ports need to be registered. For outgoing conn
 * Multiple entries for static configuration of netmap pipes as IPC channels
 * Support static configuration for Unix domain sockets as packet IPC channels
 * Handle broadcast and multicast packets (DHCP forwarding works)
-* Handle EAPOL packets for negotiation of WiFi encryption/authentification
+* Handle EAPOL packets for negotiation of WiFi encryption/authentification (ether type 0x888e)
 * Correctly forward packets with IP fragmentation
 * IPv6
 * ICMP handling and generation of error messages and TCP RSTs (maybe through spawning a dedicated userspace network stack on default)
