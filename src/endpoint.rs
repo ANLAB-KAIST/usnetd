@@ -168,7 +168,7 @@ impl Endpoint {
                 innerl2bridge.push(ethsrc);
             }
             trace!("Looking up pkt: {:?}", pkt_info);
-            if pkt_info.is_arp() {
+            if pkt_info.is_arp() || pkt_info.is_eapol() {
                 return (
                     None,
                     mirror_to_all(own_endpoint_index, all_devices, read_buffer),

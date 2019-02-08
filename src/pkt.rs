@@ -18,11 +18,18 @@ pub enum PacketInfo {
         dst_port: Option<u16>,
     },
     Arp,
+    Eapol,
 }
 impl PacketInfo {
     pub fn is_arp(&self) -> bool {
         match self {
             PacketInfo::Arp => true,
+            _ => false,
+        }
+    }
+    pub fn is_eapol(&self) -> bool {
+        match self {
+            PacketInfo::Eapol => true,
             _ => false,
         }
     }
@@ -46,7 +53,7 @@ impl PacketInfo {
                     false
                 }
             }
-            PacketInfo::Arp => false,
+            PacketInfo::Arp | PacketInfo::Eapol => false,
         }
     }
     pub fn is_dhcp_answer(&self) -> bool {
@@ -64,13 +71,13 @@ impl PacketInfo {
                     false
                 }
             }
-            PacketInfo::Arp => false,
+            PacketInfo::Arp | PacketInfo::Eapol => false,
         }
     }
     /// converts a sent-out packet to a match entry for answers (only of the other's specific (port,ip) pair)
     pub fn to_want(&self) -> Want {
         match self {
-            PacketInfo::Arp => unreachable!("cannot add Arp"),
+            PacketInfo::Arp | PacketInfo::Eapol => unreachable!("cannot add ARP/EAPOL"),
             PacketInfo::Ipv4 {
                 src_addr,
                 dst_addr,
@@ -88,7 +95,7 @@ impl PacketInfo {
     }
     pub fn to_match_want_with_src(&self, with_src: bool) -> Want {
         match self {
-            PacketInfo::Arp => unreachable!("cannot match Arp"),
+            PacketInfo::Arp | PacketInfo::Eapol => unreachable!("cannot match ARP/EAPOL"),
             PacketInfo::Ipv4 {
                 src_addr,
                 dst_addr,
@@ -106,7 +113,7 @@ impl PacketInfo {
     }
     pub fn is_loopback(&self) -> bool {
         match self {
-            PacketInfo::Arp => false,
+            PacketInfo::Arp | PacketInfo::Eapol => false,
             PacketInfo::Ipv4 {
                 src_addr: _,
                 dst_addr,
@@ -155,7 +162,18 @@ pub fn extract_pkt_info(frame: &[u8]) -> Option<(PacketInfo, EthernetAddress, Et
                 eth_frame.dst_addr(),
             ))
         }
-        _ => None,
+        EthernetProtocol::Ipv6 => None,
+        EthernetProtocol::Unknown(t) => {
+            if t == 0x888e {
+                Some((
+                    PacketInfo::Eapol,
+                    eth_frame.src_addr(),
+                    eth_frame.dst_addr(),
+                ))
+            } else {
+                None
+            }
+        }
     }
 }
 
