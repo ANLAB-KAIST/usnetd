@@ -4,25 +4,30 @@ use smoltcp::phy::{Device, TxToken};
 use smoltcp::time::Instant;
 use smoltcp::Error;
 
-use usnet_devices::{
-    Netmap, NetmapRxToken, NetmapTxToken, UnixDomainSocket, UnixDomainSocketRxToken,
-    UnixDomainSocketTxToken,
-};
+#[cfg(feature = "netmap")]
+use usnet_devices::{Netmap, NetmapRxToken, NetmapTxToken};
+
+use usnet_devices::{UnixDomainSocket, UnixDomainSocketRxToken, UnixDomainSocketTxToken};
 
 #[derive(Debug)]
 pub enum EndpointDevice {
+    #[cfg(feature = "netmap")]
     HostRing(Netmap, String),
+    #[cfg(feature = "netmap")]
     NicNetmap(Netmap, String, Vec<u16>),
+    #[cfg(feature = "netmap")]
     UserNetmap(Netmap, u16),
     UserUnixDomainSocket(UnixDomainSocket),
 }
 
 // workaround for same-type limitation in fn … -> Option<(impl RxToken, impl TxToken)>
 pub enum ReceiveTokenImpl {
+    #[cfg(feature = "netmap")]
     Netmap((NetmapRxToken, NetmapTxToken)),
     UnixDomainSocket((UnixDomainSocketRxToken, UnixDomainSocketTxToken)),
 }
 
+#[cfg(feature = "netmap")]
 pub fn all_pipes() -> Vec<u16> {
     (0..4095_u16).collect()
 }
@@ -30,12 +35,18 @@ pub fn all_pipes() -> Vec<u16> {
 impl EndpointDevice {
     pub fn is_netmap(&self) -> bool {
         match self {
+            #[cfg(feature = "netmap")]
             EndpointDevice::HostRing(_, _)
             | EndpointDevice::NicNetmap(_, _, _)
             | EndpointDevice::UserNetmap(_, _) => true,
             EndpointDevice::UserUnixDomainSocket(_) => false,
         }
     }
+    #[cfg(not(feature = "netmap"))]
+    pub fn zc_forward(&mut self, _from: &mut EndpointDevice) -> Result<(), Error> {
+        panic!("no netmap support")
+    }
+    #[cfg(feature = "netmap")]
     pub fn zc_forward(&mut self, from: &mut EndpointDevice) -> Result<(), Error> {
         match self {
             EndpointDevice::HostRing(target_dev, _)
@@ -51,20 +62,23 @@ impl EndpointDevice {
     }
     pub fn get_nic<'a>(&'a self) -> Option<&'a str> {
         match self {
-            EndpointDevice::HostRing(_, _)
-            | EndpointDevice::UserNetmap(_, _)
-            | EndpointDevice::UserUnixDomainSocket(_) => None,
+            #[cfg(feature = "netmap")]
+            EndpointDevice::HostRing(_, _) | EndpointDevice::UserNetmap(_, _) => None,
+            EndpointDevice::UserUnixDomainSocket(_) => None,
+            #[cfg(feature = "netmap")]
             EndpointDevice::NicNetmap(_, iface, _) => Some(iface.as_ref()),
         }
     }
     pub fn get_host_ring<'a>(&'a self) -> Option<&'a str> {
         match self {
+            #[cfg(feature = "netmap")]
             EndpointDevice::HostRing(_, iface) => Some(iface.as_ref()),
-            EndpointDevice::NicNetmap(_, _, _)
-            | EndpointDevice::UserNetmap(_, _)
-            | EndpointDevice::UserUnixDomainSocket(_) => None,
+            #[cfg(feature = "netmap")]
+            EndpointDevice::NicNetmap(_, _, _) | EndpointDevice::UserNetmap(_, _) => None,
+            EndpointDevice::UserUnixDomainSocket(_) => None,
         }
     }
+    #[cfg(feature = "netmap")]
     pub fn free_pipe_ids<'a>(&'a mut self) -> &'a mut Vec<u16> {
         match self {
             EndpointDevice::HostRing(_, _)
@@ -75,6 +89,7 @@ impl EndpointDevice {
     }
     pub fn get_device_receive(&mut self) -> Option<ReceiveTokenImpl> {
         match self {
+            #[cfg(feature = "netmap")]
             EndpointDevice::NicNetmap(device, _, _)
             | EndpointDevice::HostRing(device, _)
             | EndpointDevice::UserNetmap(device, _) => device
@@ -87,6 +102,7 @@ impl EndpointDevice {
     }
     pub fn as_raw_fd(&self) -> RawFd {
         match self {
+            #[cfg(feature = "netmap")]
             EndpointDevice::NicNetmap(device, _, _)
             | EndpointDevice::HostRing(device, _)
             | EndpointDevice::UserNetmap(device, _) => device.as_raw_fd(),
@@ -107,6 +123,7 @@ impl EndpointDevice {
         }
 
         match self {
+            #[cfg(feature = "netmap")]
             EndpointDevice::NicNetmap(device, _, _)
             | EndpointDevice::HostRing(device, _)
             | EndpointDevice::UserNetmap(device, _) => write_helper(device, read_buffer),

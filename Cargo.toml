@@ -29,6 +29,7 @@ clap = "2.31.2"
 [features]
 default = []
 pcap = []
+netmap = ["usnet_devices/netmap"]
 
 [profile.release]
 codegen-units = 1

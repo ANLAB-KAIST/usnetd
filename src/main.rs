@@ -9,7 +9,11 @@ extern crate env_logger;
 extern crate clap;
 extern crate dotenv;
 
-use devices::{all_pipes, EndpointDevice};
+#[cfg(feature = "netmap")]
+use devices::all_pipes;
+
+use devices::EndpointDevice;
+
 use endpoint::Endpoint;
 use pkt::Want;
 
@@ -17,7 +21,10 @@ extern crate libusnetd;
 use libusnetd::{ClientMessage, ClientMessageIp, SOCKET_PATH};
 
 extern crate usnet_devices;
-use self::usnet_devices::{nmreq, Netmap, UnixDomainSocket};
+#[cfg(feature = "netmap")]
+use self::usnet_devices::{nmreq, Netmap};
+
+use self::usnet_devices::UnixDomainSocket;
 
 extern crate smoltcp;
 
@@ -56,8 +63,12 @@ use std::path::Path;
 use std::str;
 use std::str::FromStr;
 
+#[cfg(feature = "netmap")]
 use std::mem;
+
 use std::os::unix::net::UnixDatagram;
+
+#[cfg(feature = "netmap")]
 use std::slice;
 
 extern crate serde_json;
@@ -277,6 +288,7 @@ fn add_debug_match_for_kernel(
     add_listening_match(true, host, want, match_register);
 }
 
+#[cfg(feature = "netmap")]
 fn add_static_pipe(
     want: Want,
     interface: &str,
@@ -423,9 +435,28 @@ fn act_on(
                     error!("no unix datagram pair created");
                 }
             } else {
+                let aw = "ER";
+                if let Ok(r) = service_socket.send_to(aw.as_bytes(), client_path) {
+                    assert_eq!(r, aw.len());
+                } else {
+                    error!("RequestUDS: cannot send to {}", client_path.display());
+                }
                 error!("nic {} not found", iface);
             }
         }
+        #[cfg(not(feature = "netmap"))]
+        ClientMessage::RequestNetmapPipe(ref _iface, _pid) => {
+            let aw = "ER";
+            if let Ok(r) = service_socket.send_to(aw.as_bytes(), client_path) {
+                assert_eq!(r, aw.len());
+            } else {
+                error!(
+                    "RequestNetmapPipe: cannot send to {}",
+                    client_path.display()
+                );
+            }
+        }
+        #[cfg(feature = "netmap")]
         ClientMessage::RequestNetmapPipe(ref iface, pid) => {
             if let Some(anic) = find_nic_by_interface(all_devices, endpoint_index, iface) {
                 if let Some(pipe_id) = {
@@ -631,6 +662,35 @@ fn cleanup() {
     }
 }
 
+fn create_nic(interface: &str) -> EndpointDevice {
+    #[cfg(feature = "netmap")]
+    let r = EndpointDevice::NicNetmap(
+        Netmap::new(&("netmap:".to_string() + interface), interface, true, None).unwrap(),
+        interface.to_string(),
+        all_pipes(),
+    );
+    #[cfg(not(feature = "netmap"))]
+    let r = panic!("cannot create NIC interface");
+    r
+}
+
+fn create_host_ring(interface: &str) -> EndpointDevice {
+    #[cfg(not(feature = "netmap"))]
+    let r = panic!("cannot create host ring interface");
+    #[cfg(feature = "netmap")]
+    let r = EndpointDevice::HostRing(
+        Netmap::new(
+            &("netmap:".to_string() + interface + "^"),
+            interface,
+            true,
+            None,
+        )
+        .unwrap(),
+        interface.to_string(),
+    );
+    r
+}
+
 fn main() {
     let matches = clap::App::new("usnetd")
      .about("Memory-safe L4 Switch for Userspace Network Stacks")
@@ -719,11 +779,7 @@ fn main() {
         let nic = Rc::new(RefCell::new(EndpointOrControl::Ept(Endpoint {
             for_nic: None,
             client_path: None,
-            dev: EndpointDevice::NicNetmap(
-                Netmap::new(&("netmap:".to_string() + interface), interface, true, None).unwrap(),
-                interface.to_string(),
-                all_pipes(),
-            ),
+            dev: create_nic(interface),
             listening: vec![],
             next_dhcp_endpoint: None,
             last_pkt: None,
@@ -734,16 +790,7 @@ fn main() {
             let host = Rc::new(RefCell::new(EndpointOrControl::Ept(Endpoint {
                 for_nic: Some(nic),
                 client_path: None,
-                dev: EndpointDevice::HostRing(
-                    Netmap::new(
-                        &("netmap:".to_string() + interface + "^"),
-                        interface,
-                        true,
-                        None,
-                    )
-                    .unwrap(),
-                    interface.to_string(),
-                ),
+                dev: create_host_ring(interface),
                 listening: vec![],
                 next_dhcp_endpoint: None,
                 last_pkt: None,
@@ -776,6 +823,12 @@ fn main() {
                 src_port: None,
                 protocol: protocol,
             };
+            #[cfg(not(feature = "netmap"))]
+            panic!(
+                "compiled without netmap support, cannot add {:?}",
+                want_static
+            );
+            #[cfg(feature = "netmap")]
             add_static_pipe(
                 want_static,
                 &interface,

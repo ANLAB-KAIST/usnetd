@@ -126,6 +126,7 @@ impl Endpoint {
         while let Some(receive_token_impl) = self.dev.get_device_receive() {
             // is rewriting sometimes needed? e.g. to announce a different MAC to the host kernel but send out with the same on the network
             if let Some(p) = match receive_token_impl {
+                #[cfg(feature = "netmap")]
                 ReceiveTokenImpl::Netmap((rx_nic, _)) => self.forward_helper(
                     rx_nic,
                     innerl2bridge,
