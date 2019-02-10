@@ -12,6 +12,7 @@ The thesis evaluation was done with the tools in the folder `eval/` and shows th
 
 The current implementation covers the netmap variant, but support for macvtap would be the next easy step to have it working without the netmap kernel module.
 Unsafe code is used for netmap packet transfer and file descriptor handover. Read Chapter 3 of the thesis for a reasoning about the threat model and L2 code as the trusted code base.
+Support for DHCP, WiFi authentification, and IP fragmentation was added as well.
 
 Compile it as follows (optionally with the `--features pcap` flag to enable copying of all packets to a PCAP dump file):
 
@@ -86,8 +87,7 @@ Only packet matches for listening ports need to be registered. For outgoing conn
 
 * Multiple entries for static configuration of netmap pipes as IPC channels
 * Support static configuration for Unix domain sockets as packet IPC channels
-* Handle broadcast and multicast packets (DHCP forwarding works)
-* Correctly forward packets with IP fragmentation
+* Handle broadcast and multicast packets (DHCP forwarding works alredy)
 * IPv6
 * ICMP handling and generation of error messages and TCP RSTs (maybe through spawning a dedicated userspace network stack on default)
 * Multi-core scalability
