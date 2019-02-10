@@ -365,7 +365,7 @@ fn parse_port_list(port_list: &str) -> Vec<(String, u8, Option<u16>, Option<Stri
 enum EntryChange {
     Add(Rc<RefCell<EndpointOrControl>>),
     Remove(Rc<RefCell<EndpointOrControl>>),
-    CleanupKernel,
+    Cleanup,
 }
 
 fn act_on(
@@ -619,14 +619,14 @@ fn read_ports_from(proc_net_tcp_or_udp: &str) -> Vec<u16> {
         .collect::<Vec<_>>()
 }
 
-fn cleanup_kernel() {
+fn cleanup() {
     let timer_path = SOCKET_PATH.to_string() + "timer";
     let _ = fs::remove_file(&timer_path);
     let timer = UnixDatagram::bind(&timer_path).expect("Cannot bind timer socket");
     loop {
-        thread::sleep(Duration::from_secs(60));
+        thread::sleep(Duration::from_secs(90));
         timer
-            .send_to("cleanup_kernel".as_bytes(), SOCKET_PATH)
+            .send_to("cleanup".as_bytes(), SOCKET_PATH)
             .expect("cannot send to service unix domain socket");
     }
 }
@@ -677,6 +677,7 @@ fn main() {
 
     let pcap_dump = pcap_dump();
 
+    let mut fragmentation_map = HashMap::default();
     let mut match_register = HashMap::default();
     let mut innerl2bridge = vec![];
     match env::var("ADD_MACS") {
@@ -786,7 +787,7 @@ fn main() {
     }
     // finished processing static configuration
 
-    let _cleanup_thread = thread::spawn(cleanup_kernel);
+    let _cleanup_thread = thread::spawn(cleanup);
 
     let mut client_buf = vec![0; 4000];
     let mut endpoint_changes = vec![];
@@ -816,8 +817,8 @@ fn main() {
                                             &mut pipe_monitor,
                                         );
                                     } else {
-                                        if client_msg_str == "cleanup_kernel" {
-                                            endpoint_changes.push(EntryChange::CleanupKernel);
+                                        if client_msg_str == "cleanup" {
+                                            endpoint_changes.push(EntryChange::Cleanup);
                                         } else {
                                             error!("no json: {}", client_msg_str);
                                         }
@@ -841,6 +842,7 @@ fn main() {
                         &all_devices,
                         zerocopy,
                         &pcap_dump,
+                        &mut fragmentation_map,
                     ) {
                         v.sort_unstable();
                         v.dedup();
@@ -872,7 +874,9 @@ fn main() {
                     }
                     endpoints.remove(&mut all_devices, e);
                 }
-                EntryChange::CleanupKernel => {
+                EntryChange::Cleanup => {
+                    fragmentation_map.clear();
+                    fragmentation_map.shrink_to_fit();
                     let open_tcp_ports = read_ports_from("/proc/net/tcp");
                     let open_udp_ports = read_ports_from("/proc/net/udp");
                     debug!("Before cleanup the match rules are:");

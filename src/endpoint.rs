@@ -1,5 +1,5 @@
 use devices::{EndpointDevice, ReceiveTokenImpl};
-use pkt::{extract_pkt_info, PacketInfo, Want};
+use pkt::{extract_pkt_info, FragmentationKey, PacketInfo, Want};
 use EndpointOrControl;
 
 use smoltcp::phy::PcapSink;
@@ -38,6 +38,10 @@ impl Endpoint {
         all_devices: &[Rc<RefCell<EndpointOrControl>>],
         zerocopy: bool,
         pcap_dump: &Option<Box<PcapSink>>,
+        fragmentation_map: &mut HashMap<
+            FragmentationKey,
+            (PacketInfo, EthernetAddress, EthernetAddress),
+        >,
     ) -> Option<Vec<usize>> {
         if let Ok(ret_val) = rx_nic.consume(Instant::from_millis(0), |read_buffer| {
             match pcap_dump {
@@ -52,6 +56,7 @@ impl Endpoint {
                 own_endpoint_index,
                 read_buffer,
                 all_devices,
+                fragmentation_map,
             );
             if let Some(target_wrap) = target {
                 let target_ref = match &target_wrap {
@@ -112,6 +117,10 @@ impl Endpoint {
         all_devices: &[Rc<RefCell<EndpointOrControl>>],
         zerocopy: bool,
         pcap_dump: &Option<Box<PcapSink>>,
+        fragmentation_map: &mut HashMap<
+            FragmentationKey,
+            (PacketInfo, EthernetAddress, EthernetAddress),
+        >,
     ) -> Option<Vec<usize>> {
         let mut ret: Option<Vec<usize>> = None;
         while let Some(receive_token_impl) = self.dev.get_device_receive() {
@@ -125,6 +134,7 @@ impl Endpoint {
                     all_devices,
                     zerocopy,
                     pcap_dump,
+                    fragmentation_map,
                 ),
                 ReceiveTokenImpl::UnixDomainSocket((rx_nic, _)) => self.forward_helper(
                     rx_nic,
@@ -134,6 +144,7 @@ impl Endpoint {
                     all_devices,
                     zerocopy,
                     pcap_dump,
+                    fragmentation_map,
                 ),
             } {
                 if let Some(ref mut v) = ret {
@@ -152,9 +163,13 @@ impl Endpoint {
         own_endpoint_index: usize,
         read_buffer: &[u8],
         all_devices: &'a [Rc<RefCell<EndpointOrControl>>],
+        fragmentation_map: &mut HashMap<
+            FragmentationKey,
+            (PacketInfo, EthernetAddress, EthernetAddress),
+        >,
     ) -> (Option<Target<'a>>, Option<Vec<usize>>) {
         let incoming_packet = self.dev.get_nic().is_some();
-        if let Some((pkt_info, ethsrc, ethdst)) = extract_pkt_info(read_buffer) {
+        if let Some((pkt_info, ethsrc, ethdst)) = extract_pkt_info(read_buffer, fragmentation_map) {
             if match &self.last_pkt {
                 None => false,
                 Some(pkt) => pkt == &pkt_info,

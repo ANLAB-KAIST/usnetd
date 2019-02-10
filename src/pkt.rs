@@ -1,7 +1,7 @@
 use libusnetd::{ClientMessageIp, WantMsg};
 
 use byteorder::{ByteOrder, NetworkEndian};
-
+use hashbrown::HashMap;
 use std::str::FromStr;
 
 use smoltcp::wire::{
@@ -132,7 +132,36 @@ fn protocol_has_ports(protocol: IpProtocol) -> bool {
   || protocol == IpProtocol::from(0x88) // UDPLite
 }
 
-pub fn extract_pkt_info(frame: &[u8]) -> Option<(PacketInfo, EthernetAddress, EthernetAddress)> {
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub struct FragmentationKey {
+    id: u16,
+    src_ip: Ipv4Address,
+    dst_ip: Ipv4Address,
+    protocol: u8,
+    src_mac: EthernetAddress,
+    dst_mac: EthernetAddress,
+}
+
+impl FragmentationKey {
+    fn new(frame: &EthernetFrame<&[u8]>, packet: &Ipv4Packet<&[u8]>) -> FragmentationKey {
+        FragmentationKey {
+            id: packet.ident(),
+            src_ip: packet.src_addr(),
+            dst_ip: packet.dst_addr(),
+            protocol: u8::from(packet.protocol()),
+            src_mac: frame.src_addr(),
+            dst_mac: frame.dst_addr(),
+        }
+    }
+}
+
+pub fn extract_pkt_info(
+    frame: &[u8],
+    fragmentation_map: &mut HashMap<
+        FragmentationKey,
+        (PacketInfo, EthernetAddress, EthernetAddress),
+    >,
+) -> Option<(PacketInfo, EthernetAddress, EthernetAddress)> {
     let eth_frame = EthernetFrame::new_checked(frame).ok()?;
     match eth_frame.ethertype() {
         EthernetProtocol::Arp => {
@@ -140,6 +169,11 @@ pub fn extract_pkt_info(frame: &[u8]) -> Option<(PacketInfo, EthernetAddress, Et
         }
         EthernetProtocol::Ipv4 => {
             let ipv4_packet = Ipv4Packet::new_checked(eth_frame.payload()).ok()?;
+            if ipv4_packet.frag_offset() > 0 {
+                let key = FragmentationKey::new(&eth_frame, &ipv4_packet);
+                trace!("looking up fragmentation info for {:?}", key);
+                return fragmentation_map.get(&key).cloned();
+            }
             let payload = ipv4_packet.payload();
             let (src_port, dst_port) =
                 if protocol_has_ports(ipv4_packet.protocol()) && payload.len() > 4 {
@@ -150,7 +184,7 @@ pub fn extract_pkt_info(frame: &[u8]) -> Option<(PacketInfo, EthernetAddress, Et
                 } else {
                     (None, None)
                 };
-            Some((
+            let ret = (
                 PacketInfo::Ipv4 {
                     src_addr: ipv4_packet.src_addr(),
                     dst_addr: ipv4_packet.dst_addr(),
@@ -160,7 +194,13 @@ pub fn extract_pkt_info(frame: &[u8]) -> Option<(PacketInfo, EthernetAddress, Et
                 },
                 eth_frame.src_addr(),
                 eth_frame.dst_addr(),
-            ))
+            );
+            if !ipv4_packet.dont_frag() && ipv4_packet.more_frags() {
+                let key = FragmentationKey::new(&eth_frame, &ipv4_packet);
+                trace!("remembering fragmentation info for {:?}", key);
+                let _ = fragmentation_map.insert(key, ret.clone());
+            }
+            Some(ret)
         }
         EthernetProtocol::Ipv6 => None,
         EthernetProtocol::Unknown(t) => {
