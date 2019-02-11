@@ -1,13 +1,15 @@
-use std::os::unix::io::{AsRawFd, RawFd};
-
 use smoltcp::phy::{Device, TxToken};
 use smoltcp::time::Instant;
 use smoltcp::Error;
+use std::os::unix::io::{AsRawFd, RawFd};
 
 #[cfg(feature = "netmap")]
 use usnet_devices::{Netmap, NetmapRxToken, NetmapTxToken};
 
-use usnet_devices::{UnixDomainSocket, UnixDomainSocketRxToken, UnixDomainSocketTxToken};
+use usnet_devices::{
+    TapInterface, TapInterfaceRxToken, TapInterfaceTxToken, UnixDomainSocket,
+    UnixDomainSocketRxToken, UnixDomainSocketTxToken,
+};
 
 #[derive(Debug)]
 pub enum EndpointDevice {
@@ -18,6 +20,8 @@ pub enum EndpointDevice {
     #[cfg(feature = "netmap")]
     UserNetmap(Netmap, u16),
     UserUnixDomainSocket(UnixDomainSocket),
+    NicMacVtap(TapInterface, String),
+    HostTap(TapInterface, String),
 }
 
 // workaround for same-type limitation in fn … -> Option<(impl RxToken, impl TxToken)>
@@ -25,6 +29,7 @@ pub enum ReceiveTokenImpl {
     #[cfg(feature = "netmap")]
     Netmap((NetmapRxToken, NetmapTxToken)),
     UnixDomainSocket((UnixDomainSocketRxToken, UnixDomainSocketTxToken)),
+    Tap((TapInterfaceRxToken, TapInterfaceTxToken)),
 }
 
 #[cfg(feature = "netmap")]
@@ -39,7 +44,9 @@ impl EndpointDevice {
             EndpointDevice::HostRing(_, _)
             | EndpointDevice::NicNetmap(_, _, _)
             | EndpointDevice::UserNetmap(_, _) => true,
-            EndpointDevice::UserUnixDomainSocket(_) => false,
+            EndpointDevice::UserUnixDomainSocket(_)
+            | EndpointDevice::NicMacVtap(_, _)
+            | EndpointDevice::HostTap(_, _) => false,
         }
     }
     #[cfg(not(feature = "netmap"))]
@@ -55,27 +62,34 @@ impl EndpointDevice {
                 EndpointDevice::HostRing(from_dev, _)
                 | EndpointDevice::NicNetmap(from_dev, _, _)
                 | EndpointDevice::UserNetmap(from_dev, _) => target_dev.zc_forward(from_dev),
-                EndpointDevice::UserUnixDomainSocket(_) => Err(Error::Illegal),
+                EndpointDevice::UserUnixDomainSocket(_)
+                | EndpointDevice::NicMacVtap(_, _)
+                | EndpointDevice::HostTap(_, _) => Err(Error::Illegal),
             },
-            EndpointDevice::UserUnixDomainSocket(_) => Err(Error::Illegal),
+            EndpointDevice::UserUnixDomainSocket(_)
+            | EndpointDevice::NicMacVtap(_, _)
+            | EndpointDevice::HostTap(_, _) => Err(Error::Illegal),
         }
     }
     pub fn get_nic<'a>(&'a self) -> Option<&'a str> {
         match self {
             #[cfg(feature = "netmap")]
             EndpointDevice::HostRing(_, _) | EndpointDevice::UserNetmap(_, _) => None,
-            EndpointDevice::UserUnixDomainSocket(_) => None,
+            EndpointDevice::HostTap(_, _) | EndpointDevice::UserUnixDomainSocket(_) => None,
             #[cfg(feature = "netmap")]
             EndpointDevice::NicNetmap(_, iface, _) => Some(iface.as_ref()),
+            EndpointDevice::NicMacVtap(_, iface) => Some(iface.as_ref()),
         }
     }
     pub fn get_host_ring<'a>(&'a self) -> Option<&'a str> {
         match self {
             #[cfg(feature = "netmap")]
             EndpointDevice::HostRing(_, iface) => Some(iface.as_ref()),
+            EndpointDevice::HostTap(_, iface) => Some(iface.as_ref()),
             #[cfg(feature = "netmap")]
             EndpointDevice::NicNetmap(_, _, _) | EndpointDevice::UserNetmap(_, _) => None,
             EndpointDevice::UserUnixDomainSocket(_) => None,
+            EndpointDevice::NicMacVtap(_, _) => None,
         }
     }
     #[cfg(feature = "netmap")]
@@ -83,7 +97,9 @@ impl EndpointDevice {
         match self {
             EndpointDevice::HostRing(_, _)
             | EndpointDevice::UserNetmap(_, _)
-            | EndpointDevice::UserUnixDomainSocket(_) => panic!("wrong call"),
+            | EndpointDevice::UserUnixDomainSocket(_)
+            | EndpointDevice::HostTap(_, _)
+            | EndpointDevice::NicMacVtap(_, _) => panic!("wrong call"),
             EndpointDevice::NicNetmap(_, _, free_ids) => free_ids,
         }
     }
@@ -98,6 +114,9 @@ impl EndpointDevice {
             EndpointDevice::UserUnixDomainSocket(device) => device
                 .receive()
                 .map(|inner| ReceiveTokenImpl::UnixDomainSocket(inner)),
+            EndpointDevice::NicMacVtap(device, _) | EndpointDevice::HostTap(device, _) => {
+                device.receive().map(|inner| ReceiveTokenImpl::Tap(inner))
+            }
         }
     }
     pub fn as_raw_fd(&self) -> RawFd {
@@ -107,6 +126,9 @@ impl EndpointDevice {
             | EndpointDevice::HostRing(device, _)
             | EndpointDevice::UserNetmap(device, _) => device.as_raw_fd(),
             EndpointDevice::UserUnixDomainSocket(device) => device.as_raw_fd(),
+            EndpointDevice::NicMacVtap(device, _) | EndpointDevice::HostTap(device, _) => {
+                device.as_raw_fd()
+            }
         }
     }
     pub fn write(&mut self, read_buffer: &[u8]) -> Result<(), Error> {
@@ -128,6 +150,9 @@ impl EndpointDevice {
             | EndpointDevice::HostRing(device, _)
             | EndpointDevice::UserNetmap(device, _) => write_helper(device, read_buffer),
             EndpointDevice::UserUnixDomainSocket(device) => write_helper(device, read_buffer),
+            EndpointDevice::NicMacVtap(device, _) | EndpointDevice::HostTap(device, _) => {
+                write_helper(device, read_buffer)
+            }
         }
     }
 }

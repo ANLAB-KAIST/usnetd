@@ -10,15 +10,25 @@ See the [usnet_sockets](https://github.com/ANLAB-KAIST/usnet_sockets) Rust libra
 
 The thesis evaluation was done with the tools in the folder `eval/` and shows that 10G line-rate packet matching with small packets is not yet possible due to lacking multi-core scalability but for larger packets a 10G TCP transfer is possible.
 
-The current implementation covers the netmap variant, but support for macvtap would be the next easy step to have it working without the netmap kernel module.
+The current implementation covers the netmap and macvtap variant for NIC access.
+Netmap needs a the netmap kernel module to be loaded at runtime and the netmap headers to be available at compile time.
+It is recommended not only for performance reasons but also for a smooth experience for connection changes (specially WiFi).
+With netmap support the userspace networking stacks can use netmap pipes as IPC channel for packets.
+
+Macvtap NIC access with the passthru mode is used as fallback if netmap support was not enabled at compile time.
+For the host kernel to keep network access a virtual TAP interface is used with appropriate routing table entries.
+Therefore, usnetd should be started after the interface got configured with DHCP or a static IP.
+
 Unsafe code is used for netmap packet transfer and file descriptor handover. Read Chapter 3 of the thesis for a reasoning about the threat model and L2 code as the trusted code base.
-Support for DHCP, WiFi authentification, and IP fragmentation was added as well.
+Note: Support for DHCP, WiFi authentification, IP fragmentation, and macvtap access was added after the thesis was written.
 
 Compile it as follows (optionally with the `--features pcap` flag to enable copying of all packets to a PCAP dump file):
 
     cargo build --release
+    # or if netmap is available
+    cargo build --release --features netmap
 
-To use usnetd, first compile netmap and load the kernel module and the patched drivers, e.g., for ixgbe as follows.
+To use usnetd with netmap, first compile netmap and load the kernel module and the patched drivers, e.g., for ixgbe as follows.
 
     rmmod ixgbe
     insmod netmap/netmap.ko
@@ -29,8 +39,8 @@ To use usnetd, first compile netmap and load the kernel module and the patched d
     ip link set enp1s0f0 promisc on
     dmesg | tail # to check for errors and see that flow control is disabled
 
-The usnetd service assumes running as root and does not yet drop privileges but actually just access to `/dev/netmap` is needed and creation of `/run/usnetd.socket` with an optional `chown` call to change the group.
-Because DHCP packets are not yet recognized, run DHCP before you start usnetd.
+The usnetd service assumes running as root and does not yet drop privileges but actually just access to `/dev/netmap` is needed and creation of `/run/usnetd.socket` with an optional `chown` call to change the group. Macvtap needs calls to the `ip` command to set up interfaces and access to `/dev/tapX`. The host kernel NIC access as virtual TAP device needs access to /dev/net/tun.
+Because the IP for the virtual TAP device is copied from the original interface, run DHCP before you start usnetd if netmap is missing.
 
 To start it, either provide at least the `INTERFACES` environment variable or write it to a configuration file which is an optional program argument.
 Other variables can be set to configure a static netmap pipe or forwarding of a SSH port for the kernel as long as you just want to try usnetd.
@@ -91,4 +101,4 @@ Only packet matches for listening ports need to be registered. For outgoing conn
 * IPv6
 * ICMP handling and generation of error messages and TCP RSTs (maybe through spawning a dedicated userspace network stack on default)
 * Multi-core scalability
-* Other backends: macvtap (plus a TAP interface for the kernel with high priority), DPDK (plus a KNI interface), or integration with VALE-bpf, AF_XDP, or PFQ
+* Other backends: DPDK (plus a KNI interface), or integration with VALE-bpf, AF_XDP, or PFQ

@@ -25,6 +25,8 @@ serde_derive = "1.0.53"
 serde_json = "1.0.17"
 dotenv = { git = "https://github.com/apiraino/rust-dotenv", rev = "5cfd95025b8e38de76937cfca525562115396ae2" }
 clap = "2.31.2"
+ctrlc = { version = "3.0", features = ["termination"] }
+lazy_static = "1.1.0"
 
 [features]
 default = []

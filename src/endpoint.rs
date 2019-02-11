@@ -137,6 +137,16 @@ impl Endpoint {
                     pcap_dump,
                     fragmentation_map,
                 ),
+                ReceiveTokenImpl::Tap((rx_nic, _)) => self.forward_helper(
+                    rx_nic,
+                    innerl2bridge,
+                    match_register,
+                    own_endpoint_index,
+                    all_devices,
+                    zerocopy,
+                    pcap_dump,
+                    fragmentation_map,
+                ),
                 ReceiveTokenImpl::UnixDomainSocket((rx_nic, _)) => self.forward_helper(
                     rx_nic,
                     innerl2bridge,

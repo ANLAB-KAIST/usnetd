@@ -24,13 +24,22 @@ extern crate usnet_devices;
 #[cfg(feature = "netmap")]
 use self::usnet_devices::{nmreq, Netmap};
 
+#[cfg(not(feature = "netmap"))]
+use self::usnet_devices::TapInterface;
+
 use self::usnet_devices::UnixDomainSocket;
+
+extern crate ctrlc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 extern crate smoltcp;
 
 #[cfg(feature = "pcap")]
 use smoltcp::phy::PcapLinkType;
 use smoltcp::phy::PcapSink;
+#[cfg(not(feature = "netmap"))]
+use smoltcp::wire::Ipv4Cidr;
 use smoltcp::wire::{EthernetAddress, IpProtocol, Ipv4Address};
 
 extern crate hashbrown;
@@ -45,6 +54,8 @@ use nix::sys::uio::IoVec;
 use nix::unistd::{chown, Gid};
 
 use nix::poll::{poll, EventFlags, PollFd};
+
+use std::process::Command;
 
 use std::cell::RefCell;
 use std::env;
@@ -72,6 +83,13 @@ use std::os::unix::net::UnixDatagram;
 use std::slice;
 
 extern crate serde_json;
+
+#[macro_use]
+extern crate lazy_static;
+
+lazy_static! {
+    static ref signal: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+}
 
 #[derive(Debug)]
 pub enum EndpointOrControl {
@@ -116,15 +134,19 @@ impl Endpoints {
     fn poll<'a>(
         &'a mut self,
         devices: &'a [Rc<RefCell<EndpointOrControl>>],
-    ) -> impl Iterator<Item = (usize, &Rc<RefCell<EndpointOrControl>>)> + 'a {
+    ) -> Option<impl Iterator<Item = (usize, &Rc<RefCell<EndpointOrControl>>)> + 'a> {
         match poll(&mut self.fds[..], -1 as c_int) {
-            Ok(_) => self
-                .fds
-                .iter()
-                .zip(devices.iter().enumerate())
-                .filter(|(pfd, _)| pfd.revents() == Some(EventFlags::POLLIN))
-                .map(|(_, d)| d),
-            Err(e) => panic!("poll error: {}", e),
+            Ok(_) => Some(
+                self.fds
+                    .iter()
+                    .zip(devices.iter().enumerate())
+                    .filter(|(pfd, _)| pfd.revents() == Some(EventFlags::POLLIN))
+                    .map(|(_, d)| d),
+            ),
+            Err(e) => {
+                error!("poll error: {}", e);
+                None
+            }
         }
     }
     fn add(
@@ -325,7 +347,7 @@ fn add_static_pipe(
     add_listening_match(true, epref, want, match_register);
 }
 
-fn get_ip_string(interface: &str) -> String {
+fn get_ip_string(interface: &str) -> (String, u8) {
     use std::process::Command;
     let ioutput = Command::new("ip")
         .args(&["-4", "a", "show", "dev", interface])
@@ -337,8 +359,8 @@ fn get_ip_string(interface: &str) -> String {
         .split('/')
         .collect::<Vec<_>>();
     let ipv4 = ipandsub[0].to_string();
-    let _sub = u8::from_str(ipandsub[1]).expect("net size not found");
-    ipv4
+    let sub = u8::from_str(ipandsub[1]).expect("net size not found");
+    (ipv4, sub)
 }
 
 fn parse_port_list(port_list: &str) -> Vec<(String, u8, Option<u16>, Option<String>)> {
@@ -654,15 +676,73 @@ fn cleanup() {
     let timer_path = SOCKET_PATH.to_string() + "timer";
     let _ = fs::remove_file(&timer_path);
     let timer = UnixDatagram::bind(&timer_path).expect("Cannot bind timer socket");
+    let mut counter = 0;
     loop {
-        thread::sleep(Duration::from_secs(90));
-        timer
-            .send_to("cleanup".as_bytes(), SOCKET_PATH)
-            .expect("cannot send to service unix domain socket");
+        thread::sleep(Duration::from_secs(1));
+        counter += 1;
+        let msg = if signal.load(Ordering::SeqCst) {
+            Some("end")
+        } else if counter == 90 {
+            counter = 0;
+            Some("cleanup")
+        } else {
+            None
+        };
+        match msg {
+            Some(m) => {
+                timer
+                    .send_to(m.as_bytes(), SOCKET_PATH)
+                    .expect("cannot send to service unix domain socket");
+                if m == "end" {
+                    break;
+                }
+            }
+            None => {}
+        }
     }
 }
 
-fn create_nic(interface: &str) -> EndpointDevice {
+pub fn get_gateway(interface: &str) -> Option<String> {
+    let coutput = Command::new("ip")
+        .args(&["-4", "route", "get", "1", "oif", interface])
+        .output()
+        .expect("command ip route get 1 oif IF failed");
+    let sout1 = String::from_utf8(coutput.stdout).unwrap();
+    let sout = sout1.split(' ').collect::<Vec<_>>();
+    let gateway = sout[2];
+    if gateway == interface {
+        debug!("extracted no gateway for {}", interface);
+        None
+    } else {
+        debug!("extracted gateway {} for {}", gateway, interface);
+        Some(gateway.to_string())
+    }
+}
+
+pub fn get_macaddr(interface: &str) -> String {
+    let mut macaddr = String::new();
+    {
+        let mut f = fs::File::open("/sys/class/net/".to_owned() + interface + "/address")
+            .expect("invalid interface");
+        f.read_to_string(&mut macaddr)
+            .expect("can not read mac addr");
+    }
+    macaddr
+}
+pub fn create_macvtap_passthru(ifname: &str, origifname: &str, macaddr: &str) {
+    let _ = Command::new("pkexec")
+        .args(&[
+            "ip", "link", "add", "link", origifname, "name", ifname, "type", "macvtap", "mode",
+            "passthru",
+        ])
+        .status();
+    let _ = Command::new("pkexec")
+        .args(&["ip", "link", "set", ifname, "address", &macaddr, "up"])
+        .status();
+}
+
+fn create_nic(interface: &str, cleanup_macvtaps: &mut Vec<String>) -> EndpointDevice {
+    let _ = cleanup_macvtaps.len();
     #[cfg(feature = "netmap")]
     let r = EndpointDevice::NicNetmap(
         Netmap::new(&("netmap:".to_string() + interface), interface, true, None).unwrap(),
@@ -670,13 +750,58 @@ fn create_nic(interface: &str) -> EndpointDevice {
         all_pipes(),
     );
     #[cfg(not(feature = "netmap"))]
-    let r = panic!("cannot create NIC interface");
+    let r = {
+        let ifname: String = interface.to_string() + "pass";
+        cleanup_macvtaps.push(ifname.clone());
+        let macaddr = get_macaddr(&interface);
+        create_macvtap_passthru(&ifname, &interface, &macaddr);
+        let device = TapInterface::new_macvtap(&ifname, None).unwrap();
+        EndpointDevice::NicMacVtap(device, interface.to_string())
+    };
     r
 }
 
 fn create_host_ring(interface: &str) -> EndpointDevice {
     #[cfg(not(feature = "netmap"))]
-    let r = panic!("cannot create host ring interface");
+    let r = {
+        let host_tap = interface.to_string() + "usnetd";
+        let macaddr = get_macaddr(&interface);
+        let gw = get_gateway(&interface);
+        let (ip, sub) = get_ip_string(&interface);
+        let d = EndpointDevice::HostTap(
+            TapInterface::new(&host_tap, None).unwrap(),
+            interface.to_string(),
+        );
+        let _ = Command::new("ip")
+            .args(&["link", "set", &host_tap, "address", &macaddr])
+            .status();
+        let _ = Command::new("ip")
+            .args(&["link", "set", &host_tap, "up"])
+            .status();
+        let _ = Command::new("ip")
+            .args(&["addr", "add", &format!("{}/{}", ip, sub), "dev", &host_tap])
+            .status();
+        let net = Ipv4Cidr::new(Ipv4Address::from_str(&ip).expect("ip conv"), sub).network();
+        let _ = Command::new("ip")
+            .args(&[
+                "route",
+                "add",
+                &format!("{}/{}", net, sub),
+                "metric",
+                "1",
+                "dev",
+                &host_tap,
+            ])
+            .status();
+        if let Some(gw_ip) = gw {
+            let _ = Command::new("ip")
+                .args(&[
+                    "route", "add", "default", "via", &gw_ip, "metric", "1", "dev", &host_tap,
+                ])
+                .status();
+        }
+        d
+    };
     #[cfg(feature = "netmap")]
     let r = EndpointDevice::HostRing(
         Netmap::new(
@@ -736,6 +861,7 @@ fn main() {
         .map(|s| Gid::from_raw(u32::from_str(&s).expect("ALLOW_GID not an unsigned integer")));
 
     let pcap_dump = pcap_dump();
+    let mut cleanup_macvtaps = vec![];
 
     let mut fragmentation_map = HashMap::default();
     let mut match_register = HashMap::default();
@@ -779,7 +905,7 @@ fn main() {
         let nic = Rc::new(RefCell::new(EndpointOrControl::Ept(Endpoint {
             for_nic: None,
             client_path: None,
-            dev: create_nic(interface),
+            dev: create_nic(interface, &mut cleanup_macvtaps),
             listening: vec![],
             next_dhcp_endpoint: None,
             last_pkt: None,
@@ -802,7 +928,7 @@ fn main() {
 
     if let Ok(port_list) = env::var("DEBUG_PORTS") {
         for (interface, protocol, maybe_port, maybe_remote) in parse_port_list(&port_list) {
-            let interface_ip = get_ip_string(&interface);
+            let (interface_ip, _) = get_ip_string(&interface);
             let want_ssh = Want {
                 dst_addr: Ipv4Address::from_str(&interface_ip).unwrap(),
                 protocol: protocol,
@@ -815,7 +941,7 @@ fn main() {
     }
     if let Ok(port_list) = env::var("STATIC_PIPES") {
         for (interface, protocol, maybe_port, maybe_remote) in parse_port_list(&port_list) {
-            let interface_ip = get_ip_string(&interface);
+            let (interface_ip, _) = get_ip_string(&interface);
             let want_static = Want {
                 dst_addr: Ipv4Address::from_str(&interface_ip).unwrap(),
                 dst_port: maybe_port,
@@ -840,68 +966,82 @@ fn main() {
     }
     // finished processing static configuration
 
-    let _cleanup_thread = thread::spawn(cleanup);
+    let s = signal.clone();
+    ctrlc::set_handler(move || {
+        s.store(true, Ordering::SeqCst);
+    })
+    .expect("Cannot set signal handler");
+    let cleanup_thread = thread::spawn(cleanup);
 
     let mut client_buf = vec![0; 4000];
     let mut endpoint_changes = vec![];
 
-    loop {
-        for (endpoint_index, endpointorcontrol_ref) in endpoints.poll(&all_devices) {
-            // select on all FDs
-            let mut endpointorcontrol = endpointorcontrol_ref.borrow_mut();
-            match *endpointorcontrol {
-                EndpointOrControl::Control(ref mut service_socket) => {
-                    if let Ok((len, client_addr)) =
-                        service_socket.recv_from(client_buf.as_mut_slice())
-                    {
-                        if let Some(client_path) = client_addr.as_pathname() {
-                            if let Ok(sock_addr) = SockAddr::new_unix(client_path) {
-                                if let Ok(client_msg_str) = str::from_utf8(&client_buf[0..len]) {
-                                    if let Ok(client_msg) = serde_json::from_str(&client_msg_str) {
-                                        act_on(
-                                            &client_msg,
-                                            client_path,
-                                            &sock_addr,
-                                            service_socket,
-                                            &all_devices,
-                                            endpoint_index,
-                                            &mut match_register,
-                                            &mut endpoint_changes,
-                                            &mut pipe_monitor,
-                                        );
-                                    } else {
-                                        if client_msg_str == "cleanup" {
-                                            endpoint_changes.push(EntryChange::Cleanup);
+    let mut end = false;
+    while !end {
+        if let Some(iter) = endpoints.poll(&all_devices) {
+            for (endpoint_index, endpointorcontrol_ref) in iter {
+                // select on all FDs
+                let mut endpointorcontrol = endpointorcontrol_ref.borrow_mut();
+                match *endpointorcontrol {
+                    EndpointOrControl::Control(ref mut service_socket) => {
+                        if let Ok((len, client_addr)) =
+                            service_socket.recv_from(client_buf.as_mut_slice())
+                        {
+                            if let Some(client_path) = client_addr.as_pathname() {
+                                if let Ok(sock_addr) = SockAddr::new_unix(client_path) {
+                                    if let Ok(client_msg_str) = str::from_utf8(&client_buf[0..len])
+                                    {
+                                        if let Ok(client_msg) =
+                                            serde_json::from_str(&client_msg_str)
+                                        {
+                                            act_on(
+                                                &client_msg,
+                                                client_path,
+                                                &sock_addr,
+                                                service_socket,
+                                                &all_devices,
+                                                endpoint_index,
+                                                &mut match_register,
+                                                &mut endpoint_changes,
+                                                &mut pipe_monitor,
+                                            );
                                         } else {
-                                            error!("no json: {}", client_msg_str);
+                                            if client_msg_str == "cleanup" {
+                                                endpoint_changes.push(EntryChange::Cleanup);
+                                            } else if client_msg_str == "end" {
+                                                end = true;
+                                                break;
+                                            } else {
+                                                error!("no json: {}", client_msg_str);
+                                            }
                                         }
+                                    } else {
+                                        error!("broken string");
                                     }
                                 } else {
-                                    error!("broken string");
+                                    error!("no socket addr possible");
                                 }
                             } else {
-                                error!("no socket addr possible");
+                                error!("no client path");
                             }
-                        } else {
-                            error!("no client path");
                         }
                     }
-                }
-                EndpointOrControl::Ept(ref mut endpoint) => {
-                    if let Some(mut v) = endpoint.forward(
-                        &mut innerl2bridge,
-                        &mut match_register,
-                        endpoint_index,
-                        &all_devices,
-                        zerocopy,
-                        &pcap_dump,
-                        &mut fragmentation_map,
-                    ) {
-                        v.sort_unstable();
-                        v.dedup();
-                        for rem_ind in v {
-                            endpoint_changes
-                                .push(EntryChange::Remove(all_devices[rem_ind].clone()));
+                    EndpointOrControl::Ept(ref mut endpoint) => {
+                        if let Some(mut v) = endpoint.forward(
+                            &mut innerl2bridge,
+                            &mut match_register,
+                            endpoint_index,
+                            &all_devices,
+                            zerocopy,
+                            &pcap_dump,
+                            &mut fragmentation_map,
+                        ) {
+                            v.sort_unstable();
+                            v.dedup();
+                            for rem_ind in v {
+                                endpoint_changes
+                                    .push(EntryChange::Remove(all_devices[rem_ind].clone()));
+                            }
                         }
                     }
                 }
@@ -970,5 +1110,13 @@ fn main() {
                 }
             }
         }
+    }
+    info!("Clean shutdown");
+    let _ = cleanup_thread.join().unwrap();
+    for macvtap in cleanup_macvtaps {
+        info!("removing macvtap {}", macvtap);
+        let _ = Command::new("ip")
+            .args(&["link", "delete", &macvtap])
+            .status();
     }
 }
