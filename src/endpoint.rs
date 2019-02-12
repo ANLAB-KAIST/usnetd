@@ -218,6 +218,7 @@ impl Endpoint {
                                 let mut nic = nic_rc.borrow_mut();
                                 nic.ept_mut().next_dhcp_endpoint =
                                     Some(all_devices[own_endpoint_index].clone());
+                                nic.ept_mut().last_pkt = None;
                                 trace!("set this endpoint as next DHCP receiver for the NIC");
                                 self.last_pkt = None; // needed to force refreshing of next_dhcp_endpoint
                             }

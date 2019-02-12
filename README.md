@@ -16,7 +16,7 @@ It is recommended not only for performance reasons but also for a smooth experie
 With netmap support the userspace networking stacks can use netmap pipes as IPC channel for packets.
 
 Macvtap NIC access with the passthru mode is used as fallback if netmap support was not enabled at compile time.
-For the host kernel to keep network access a virtual TAP interface is used with appropriate routing table entries.
+For the host kernel to keep network access a virtual TAP interface is used with appropriate routing table entries (deletes old ones, recreates them when it terminates).
 Therefore, usnetd should be started after the interface got configured with DHCP or a static IP.
 
 Unsafe code is used for netmap packet transfer and file descriptor handover. Read Chapter 3 of the thesis for a reasoning about the threat model and L2 code as the trusted code base.

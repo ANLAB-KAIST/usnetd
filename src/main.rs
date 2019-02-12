@@ -761,7 +761,21 @@ fn create_nic(interface: &str, cleanup_macvtaps: &mut Vec<String>) -> EndpointDe
     r
 }
 
-fn create_host_ring(interface: &str) -> EndpointDevice {
+fn set_route(cmd: &str, interface: &str, network: &Ipv4Cidr, gateway: &Option<String>) {
+    let _ = Command::new("ip")
+        .args(&["route", cmd, &format!("{}", network), "dev", interface])
+        .status();
+    if let Some(gw_ip) = gateway {
+        let _ = Command::new("ip")
+            .args(&["route", cmd, "default", "via", &gw_ip, "dev", interface])
+            .status();
+    }
+}
+
+fn create_host_ring(
+    interface: &str,
+    cleanup_routes: &mut Vec<(String, String, Ipv4Cidr, Option<String>)>,
+) -> EndpointDevice {
     #[cfg(not(feature = "netmap"))]
     let r = {
         let host_tap = interface.to_string() + "usnetd";
@@ -781,25 +795,11 @@ fn create_host_ring(interface: &str) -> EndpointDevice {
         let _ = Command::new("ip")
             .args(&["addr", "add", &format!("{}/{}", ip, sub), "dev", &host_tap])
             .status();
-        let net = Ipv4Cidr::new(Ipv4Address::from_str(&ip).expect("ip conv"), sub).network();
-        let _ = Command::new("ip")
-            .args(&[
-                "route",
-                "add",
-                &format!("{}/{}", net, sub),
-                "metric",
-                "1",
-                "dev",
-                &host_tap,
-            ])
-            .status();
-        if let Some(gw_ip) = gw {
-            let _ = Command::new("ip")
-                .args(&[
-                    "route", "add", "default", "via", &gw_ip, "metric", "1", "dev", &host_tap,
-                ])
-                .status();
-        }
+        let net = Ipv4Cidr::new(Ipv4Address::from_str(&ip).expect("ip cidr conv"), sub).network();
+        set_route("del", &interface, &net, &gw);
+        set_route("del", &interface, &net, &gw);
+        set_route("add", &host_tap, &net, &gw);
+        cleanup_routes.push((interface.to_string(), host_tap, net, gw));
         d
     };
     #[cfg(feature = "netmap")]
@@ -862,6 +862,7 @@ fn main() {
 
     let pcap_dump = pcap_dump();
     let mut cleanup_macvtaps = vec![];
+    let mut cleanup_routes = vec![];
 
     let mut fragmentation_map = HashMap::default();
     let mut match_register = HashMap::default();
@@ -916,7 +917,7 @@ fn main() {
             let host = Rc::new(RefCell::new(EndpointOrControl::Ept(Endpoint {
                 for_nic: Some(nic),
                 client_path: None,
-                dev: create_host_ring(interface),
+                dev: create_host_ring(interface, &mut cleanup_routes),
                 listening: vec![],
                 next_dhcp_endpoint: None,
                 last_pkt: None,
@@ -1113,6 +1114,11 @@ fn main() {
     }
     info!("Clean shutdown");
     let _ = cleanup_thread.join().unwrap();
+    for (interface, host_tap, net, gw) in cleanup_routes {
+        info!("restoring routes for {}", interface);
+        set_route("del", &host_tap, &net, &gw);
+        set_route("add", &interface, &net, &gw);
+    }
     for macvtap in cleanup_macvtaps {
         info!("removing macvtap {}", macvtap);
         let _ = Command::new("ip")
