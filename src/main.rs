@@ -38,9 +38,7 @@ extern crate smoltcp;
 #[cfg(feature = "pcap")]
 use smoltcp::phy::PcapLinkType;
 use smoltcp::phy::PcapSink;
-#[cfg(not(feature = "netmap"))]
-use smoltcp::wire::Ipv4Cidr;
-use smoltcp::wire::{EthernetAddress, IpProtocol, Ipv4Address};
+use smoltcp::wire::{EthernetAddress, IpProtocol, Ipv4Address, Ipv4Cidr};
 
 extern crate hashbrown;
 use hashbrown::HashMap;
@@ -776,6 +774,7 @@ fn create_host_ring(
     interface: &str,
     cleanup_routes: &mut Vec<(String, String, Ipv4Cidr, Option<String>)>,
 ) -> EndpointDevice {
+    let _ = cleanup_routes.len();
     #[cfg(not(feature = "netmap"))]
     let r = {
         let host_tap = interface.to_string() + "usnetd";
