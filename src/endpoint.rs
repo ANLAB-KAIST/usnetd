@@ -95,10 +95,12 @@ impl Endpoint {
                             break;
                         }
                     }
-                    if let Some(ref mut v) = ret {
-                        v.push(target_index.unwrap());
-                    } else {
-                        ret = Some(vec![target_index.unwrap()]);
+                    if let Some(idx) = target_index {
+                        if let Some(ref mut v) = ret {
+                            v.push(idx);
+                        } else {
+                            ret = Some(vec![idx]);
+                        }
                     }
                 }
             }
