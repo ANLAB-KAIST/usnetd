@@ -9,6 +9,7 @@ use std::io::Write;
 use std::net::{IpAddr, ToSocketAddrs};
 use std::str;
 use std::str::FromStr;
+use std::time::Duration;
 
 use std::io::prelude::*;
 
@@ -111,7 +112,7 @@ fn handle_connection(
     outfile: &Option<String>,
     hostname: &Option<String>,
 ) {
-    let mut stream = TcpStream::connect(host).unwrap();
+    let mut stream = TcpStream::connect_timeout(&host.to_socket_addrs().unwrap().next().unwrap(), Duration::from_secs(10)).expect("Test DNS resolution or add REDUCE_MTU_BY=160");
     eprintln!("connected");
     let req = format!(
         "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
