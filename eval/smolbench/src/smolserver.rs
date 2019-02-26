@@ -10,7 +10,7 @@ use std::time::Instant as StdInstant;
 
 use serde_json;
 use std::env;
-use usnet_sockets::config::StcpBackend;
+use usnet_sockets::usnetconfig::StcpBackend;
 
 pub fn run(bufsize: usize, rxtx_size: usize, reverse: bool) {
     let nocopy = true;

@@ -16,7 +16,7 @@ use std::io::prelude::*;
 use twoway::find_bytes;
 
 #[cfg(feature = "multi")]
-use usnet_sockets::apimultithread::TcpStream;
+use usnet_sockets::apimultithread::{TcpStream, UsnetToSocketAddrs};
 
 #[cfg(feature = "single")]
 use usnet_sockets::apisinglethread::TcpStream;
@@ -24,7 +24,7 @@ use usnet_sockets::apisinglethread::TcpStream;
 #[cfg(feature = "host")]
 use std::net::TcpStream;
 
-use usnet_sockets::config::StcpBackend;
+use usnet_sockets::usnetconfig::StcpBackend;
 
 use serde_json;
 use std::env;
@@ -112,7 +112,7 @@ fn handle_connection(
     outfile: &Option<String>,
     hostname: &Option<String>,
 ) {
-    let mut stream = TcpStream::connect_timeout(&host.to_socket_addrs().unwrap().next().unwrap(), Duration::from_secs(10)).expect("Test DNS resolution or add REDUCE_MTU_BY=160");
+    let mut stream = TcpStream::connect_timeout(&host.usnet_to_socket_addrs().unwrap().next().unwrap(), Duration::from_secs(10)).expect("Test DNS resolution or add REDUCE_MTU_BY=160");
     eprintln!("connected");
     let req = format!(
         "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
