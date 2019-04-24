@@ -95,10 +95,11 @@ Only packet matches for listening ports need to be registered. For outgoing conn
 
 # TODO
 
+* ICMP handling and generation of error messages and TCP RSTs (maybe through spawning a dedicated userspace network stack on default)
+* Handle broadcast and multicast packets (DHCP forwarding works already)
+* IPv6
+* macvtap: Detect broken connection (specially WiFi, and have a workaround for wpasupplicant to use the new interface)
 * Multiple entries for static configuration of netmap pipes as IPC channels
 * Support static configuration for Unix domain sockets as packet IPC channels
-* Handle broadcast and multicast packets (DHCP forwarding works alredy)
-* IPv6
-* ICMP handling and generation of error messages and TCP RSTs (maybe through spawning a dedicated userspace network stack on default)
 * Multi-core scalability
 * Other backends: DPDK (plus a KNI interface), or integration with VALE-bpf, AF_XDP, or PFQ

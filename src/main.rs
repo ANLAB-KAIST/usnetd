@@ -1115,6 +1115,8 @@ fn main() {
     let _ = cleanup_thread.join().unwrap();
     for (interface, host_tap, net, gw) in cleanup_routes {
         info!("restoring routes for {}", interface);
+        set_route("del", &interface, &net, &gw);
+        set_route("del", &interface, &net, &gw);
         set_route("del", &host_tap, &net, &gw);
         set_route("add", &interface, &net, &gw);
     }
