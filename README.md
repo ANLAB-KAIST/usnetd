@@ -75,6 +75,8 @@ An example configuration file for usnet_sockets network services running with th
 
 For consistent performance you may want to pin it to a core by prepending `taskset -c 2` when starting it from the command line.
 
+Hint: Outgoing packets of the Linux kernel network stack may be too large and dropped by a router because PMTU Discovery does not work since no ICMP packets are received through the firewall. Either disable PMTU Discovery `sysctl net.ipv4.ip_no_pmtu_disc=1` to allow the routers to fragment the packets that are too large, or enable dynamic MTU probing at the TCP layer (PLPMTU, RFC4821) `echo 1 > /proc/sys/net/ipv4/tcp_mtu_probing`.
+
 ## Adding support for usnetd to other network stacks
 If you do not use usnet_sockets and want to add support for usnetd to your network stack, you can either use netmap pipes or Unix domain sockets as packet IPC channel.
 
