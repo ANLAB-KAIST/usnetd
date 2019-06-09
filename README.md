@@ -104,4 +104,15 @@ Only packet matches for listening ports need to be registered. For outgoing conn
 * Multiple entries for static configuration of netmap pipes as IPC channels
 * Support static configuration for Unix domain sockets as packet IPC channels
 * Multi-core scalability
-* Other backends: DPDK (plus a KNI interface), or integration with VALE-bpf, AF_XDP, or PFQ
+* Other backends: DPDK (plus a KNI interface), or integration with VALE-bpf, AF_XDP, PFQ, or a manager for RAW sockets and a XDP kernel firewall
+  * usnetd as manager for RAW sockets and a XDP kernel firewall: Userspace network stacks get RAW sockets with a cbpf filter for only their ports (to not send RSTs for each other); the kernel gets a XDP firewall to drop non-kernel connections; XDP answers/hands out ICMPs and RSTs.
+  * AF_XDP: Kernel outgoing connections are sniffed with BPF (on syscall or tc/cgroup socket filter or similar)
+
+# Ideas
+
+* Pass all kernel connections through smoltcp with some possibility to break things:
+  * a) Process connections in smoltcp sockets to get payload data and put it in a second group of smoltcp sockets that forward it to the kernel (beware: does not cover *inner* connections packet on top of UDP/IP unless usnetd is started a second time for e.g. the virtual VPN interface)
+  * b) Provide a memory-safe network stack as transparent proxy based on usnet_sockets which forwards all incomming/outgoing connections to loopback connections, find out if UDP can be forwarded and otherwise just provide a local DNS to cover basic UDP usage
+    * Special case for Kubernetes: port Linkerd service mesh to usnet_sockets since it already is a transparent proxy in Rust using tokio; add DNAT support to usnetd and use it as CNI plugin — or DNAT implemented in XDP; kernel veth interfaces are used through macvtap (or raw sockets but this needs some BPF code to drop packets early in the kernel network stack)
+  * Benefit: Removes assumption that outgoing connections are trusted. Change in TCB: a) adds smoltcp→kernel connection to the TCB, while b) adds kernel→kernel (loopback) connections to the TCB.
+* Offer a way for legacy applications to run on usnet_sockets (and thus usnetd): Implement a libc-compatible (for `LD_PRELOAD`) or Linux-ABI-compatible (for ptrace/KVM) wrapper around usnet_sockets
