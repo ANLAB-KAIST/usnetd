@@ -13,7 +13,7 @@ name = "usnetd"
 path = "src/main.rs"
 
 [dependencies]
-smoltcp = { git = "https://github.com/m-labs/smoltcp" }
+smoltcp = "0.7"
 byteorder = { version = "1.0", default-features = false }
 usnet_devices = { git = "https://github.com/ANLAB-KAIST/usnet_devices" }
 log = { version = "0.4.0", features = ["release_max_level_debug"] }
